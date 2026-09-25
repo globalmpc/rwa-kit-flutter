@@ -1,0 +1,19 @@
+# macOS and editors
+.DS_Store
+._*
+.idea/
+.vscode/
+
+# Dart and Flutter build output
+.dart_tool/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Library packages do not commit a lockfile; every consumer resolves its own.
+pubspec.lock
+
+# Environment files never enter the repository.
+.env
+.env.*

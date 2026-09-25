@@ -1,0 +1,57 @@
+# Actions are pinned to commit SHAs. A tag such as `@v2` can be moved to other code later; the
+# trailing comment is for readers only. Update a pin by changing the SHA so the change is in the diff.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Format, analyze, test, publish dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba # v2.9.1
+        with:
+          # Pinned so a new Flutter release cannot change the result of a run without a commit.
+          # CONTRIBUTING.md points here rather than repeating the number.
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+
+      # Every package is checked the same way it will be published. `pub publish --dry-run`
+      # catches a missing CHANGELOG, LICENSE or a bad pubspec before a tag does.
+      - name: Check every package
+        run: |
+          shopt -s nullglob
+          found=0
+          for pubspec in packages/*/pubspec.yaml; do
+            found=1
+            dir=$(dirname "$pubspec")
+            echo "== $dir"
+            (
+              cd "$dir"
+              # The options file includes the repository root, which a published archive does
+              # not carry, so the package must keep it out of the archive (CONTRIBUTING.md, Layout).
+              grep -qx 'analysis_options.yaml' .pubignore || {
+                echo "$dir/.pubignore must list analysis_options.yaml"
+                exit 1
+              }
+              flutter pub get
+              dart format --output=none --set-exit-if-changed .
+              flutter analyze --fatal-infos
+              flutter test
+              flutter pub publish --dry-run
+            )
+          done
+          if [ "$found" = 0 ]; then echo "No packages yet."; fi

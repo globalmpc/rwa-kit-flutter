@@ -1,0 +1,3 @@
+# The analysis options include the repository root file, which is not part of the archive. An
+# unanchored pattern matches at any depth, so this covers the example's file as well.
+analysis_options.yaml

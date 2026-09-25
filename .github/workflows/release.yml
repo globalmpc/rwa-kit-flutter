@@ -1,0 +1,62 @@
+# Publishes one package to pub.dev when its release tag is pushed.
+#
+# Tag format: <package>-v<version>, for example mnemonic_backup_flow-v0.1.0. The version in the
+# tag must equal the version in packages/<package>/pubspec.yaml, or the run stops before publishing.
+#
+# Authentication is pub.dev automated publishing: GitHub issues a short-lived OIDC token for this
+# run and pub.dev accepts it. No pub.dev credential exists in this repository. Each package is
+# enabled on pub.dev against this repository, the tag pattern <package>-v{{version}}, and the
+# GitHub environment named pub.dev, so the job only runs in the public repository.
+name: release
+
+on:
+  push:
+    tags:
+      - "*-v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve package from tag
+    if: github.repository == 'globalmpc/rwa-kit-flutter'
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.tag.outputs.name }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: tag
+        run: |
+          name="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          test -f "packages/$name/pubspec.yaml" || { echo "No package at packages/$name"; exit 1; }
+          declared=$(sed -n 's/^version: *//p' "packages/$name/pubspec.yaml")
+          test "$declared" = "$version" || { echo "Tag says $version, pubspec.yaml says $declared"; exit 1; }
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # The workflow maintained by the Dart team: sets up Dart and Flutter, exchanges the OIDC token,
+  # runs a dry run, then publishes. Pinned to a commit like every other action here.
+  publish:
+    name: Publish to pub.dev
+    needs: resolve
+    permissions:
+      id-token: write
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+    with:
+      working-directory: packages/${{ needs.resolve.outputs.name }}
+      environment: pub.dev
+
+  release:
+    name: GitHub Release
+    needs: [resolve, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "${{ needs.resolve.outputs.name }} ${{ needs.resolve.outputs.version }}" --generate-notes

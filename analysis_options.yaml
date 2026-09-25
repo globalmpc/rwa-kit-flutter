@@ -1,0 +1,8 @@
+# Analyzer strictness shared by every package in this repository. Each package's
+# analysis_options.yaml includes this file next to package:flutter_lints/flutter.yaml (an options
+# file can include several), so this block exists once and no copy can drift.
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true

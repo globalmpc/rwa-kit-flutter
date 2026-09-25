@@ -1,0 +1,20 @@
+name: mnemonic_backup_flow_example
+description: Shows the backup flow end to end with a demo PIN dialog.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mnemonic_backup_flow:
+    path: ../
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

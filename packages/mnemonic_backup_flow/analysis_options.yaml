@@ -1,0 +1,5 @@
+# Repository tooling, not package content: the shared strictness is included from the repository
+# root, which a published archive does not carry, so both options files are in .pubignore.
+include:
+  - package:flutter_lints/flutter.yaml
+  - ../../analysis_options.yaml
