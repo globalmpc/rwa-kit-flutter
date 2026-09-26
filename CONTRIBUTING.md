@@ -25,7 +25,7 @@ A package README states the install line, one runnable example, and what the pac
 
 - Branch from `main`: `feat/<package>-<topic>`, `fix/<package>-<topic>`, `chore/<topic>`.
 - Commit messages follow Conventional Commits: `feat(mnemonic_backup_flow): random-word verification`.
-- One package per pull request. Fill in the template, link the issue, and add a CHANGELOG entry under `Unreleased`. Until a package's first release is tagged, its `0.1.0` entry is edited in place instead.
+- One package per pull request. Fill in the template, link the issue, and add a CHANGELOG entry under `Unreleased`. Until a package's first version is on pub.dev, its `0.1.0` entry is edited in place instead.
 
 ## Rules for published code
 

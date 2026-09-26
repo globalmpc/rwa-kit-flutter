@@ -6,7 +6,7 @@ Open-source Flutter packages for wallet and real-world-asset (RWA) apps, publish
 
 | Package | What it does | pub.dev |
 |---|---|---|
-| [`mnemonic_backup_flow`](packages/mnemonic_backup_flow) | Recovery-phrase reveal, verification and import screens for wallets: PIN gate, screenshot-protection hooks, random-word checks, clipboard clearing, 12 to 24 words, translatable text. No native code. | first release pending |
+| [`mnemonic_backup_flow`](packages/mnemonic_backup_flow) | Recovery-phrase reveal, verification and import screens for wallets: PIN gate, screenshot-protection hooks, random-word checks, clipboard clearing, 12 to 24 words, translatable text. No native code. | [![pub](https://img.shields.io/pub/v/mnemonic_backup_flow)](https://pub.dev/packages/mnemonic_backup_flow) |
 
 ## Layout
 
