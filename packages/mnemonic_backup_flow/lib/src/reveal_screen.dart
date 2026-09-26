@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'mnemonic_words.dart';
-import 'lifecycle.dart';
 import 'protected_screen.dart';
 import 'report.dart';
 import 'screen_protection.dart';
@@ -47,8 +46,7 @@ class MnemonicRevealScreen extends StatefulWidget {
 }
 
 class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
-    with WidgetsBindingObserver, ProtectedScreenState<MnemonicRevealScreen> {
-  bool _inForeground = true;
+    with ProtectedScreenState<MnemonicRevealScreen> {
   SensitiveClipboard? _clipboard;
 
   @override
@@ -58,22 +56,9 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
   Duration? get protectionTimeout => widget.protectionTimeout;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _inForeground = isAppInForeground(WidgetsBinding.instance.lifecycleState);
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _clipboard?.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    setState(() => _inForeground = isAppInForeground(state));
   }
 
   Future<void> _copy() async {
@@ -98,7 +83,7 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
   Widget build(BuildContext context) {
     final strings = widget.strings;
     final theme = Theme.of(context);
-    final visible = protectionActive && _inForeground;
+    final visible = secretVisible;
     return Scaffold(
       appBar: AppBar(title: Text(strings.revealTitle)),
       body: SafeArea(
@@ -114,9 +99,7 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
                     ? _WordGrid(words: widget.words.words)
                     : Center(
                         child: Text(
-                          protectionActive
-                              ? strings.revealHidden
-                              : protectionPlaceholder(strings),
+                          secretPlaceholder(strings),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyLarge,
                         ),

@@ -231,6 +231,30 @@ void main() {
     },
   );
 
+  testWidgets(
+    'hides the field while the app is not in the foreground, keeping what was typed',
+    (tester) async {
+      await pumpImport(tester);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'abandon');
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        find.text('Hidden while the app is not in the foreground.'),
+        findsOneWidget,
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'abandon',
+      );
+    },
+  );
+
   testWidgets('offers no paste button when pasting is not allowed', (
     tester,
   ) async {

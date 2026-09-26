@@ -11,8 +11,8 @@ import 'strings.dart';
 /// Takes a phrase the user types or pastes, validates it, and hands it back as [MnemonicWords].
 ///
 /// The field has autocorrect and suggestions off, the screen protection is active while the
-/// words are on screen, and a paste empties the clipboard afterwards so the phrase does not
-/// stay there.
+/// words are on screen, the field is hidden while the app is not in the foreground, and a paste
+/// empties the clipboard afterwards so the phrase does not stay there.
 class MnemonicImportScreen extends StatefulWidget {
   const MnemonicImportScreen({
     super.key,
@@ -154,7 +154,7 @@ class _MnemonicImportScreenState extends State<MnemonicImportScreen>
                 style: theme.textTheme.bodyMedium,
               ),
               const SizedBox(height: 16),
-              if (protectionActive)
+              if (secretVisible)
                 TextField(
                   controller: _controller,
                   minLines: 3,
@@ -178,7 +178,7 @@ class _MnemonicImportScreenState extends State<MnemonicImportScreen>
                 )
               else
                 Text(
-                  protectionPlaceholder(strings),
+                  secretPlaceholder(strings),
                   style: theme.textTheme.bodyLarge,
                 ),
               const SizedBox(height: 8),

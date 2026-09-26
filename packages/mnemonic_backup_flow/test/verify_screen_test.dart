@@ -27,11 +27,13 @@ void main() {
       wrap(
         MnemonicVerifyScreen(
           words: words,
+          screenProtection: const ScreenProtection.none(),
           challenges: challenges,
           onVerified: () => verified++,
         ),
       ),
     );
+    await tester.pump();
 
     expect(find.text('1 of 2'), findsOneWidget);
     expect(find.text('Select word #2'), findsOneWidget);
@@ -56,12 +58,14 @@ void main() {
         wrap(
           MnemonicVerifyScreen(
             words: words,
+            screenProtection: const ScreenProtection.none(),
             challenges: challenges,
             onVerified: () => verified++,
             onWrongAnswer: wrong.add,
           ),
         ),
       );
+      await tester.pump();
 
       await tester.tap(find.widgetWithText(OutlinedButton, 'zoo'));
       await tester.pump();
@@ -82,24 +86,117 @@ void main() {
     },
   );
 
-  testWidgets('rejects an empty list of challenges with a clear error', (
+  testWidgets(
+    'rejects an empty list of challenges with a clear error, before switching anything on',
+    (tester) async {
+      final protection = RecordingScreenProtection();
+      await tester.pumpWidget(
+        wrap(
+          MnemonicVerifyScreen(
+            words: MnemonicWords.parse(specVector12),
+            screenProtection: protection,
+            challenges: const [],
+            onVerified: () {},
+          ),
+        ),
+      );
+
+      expect(
+        tester.takeException(),
+        isA<ArgumentError>().having((e) => e.name, 'name', 'challenges'),
+      );
+      // A State whose initState threw is never disposed, so nothing may have been protected.
+      await tester.pumpWidget(wrap(const SizedBox()));
+      await tester.pumpAndSettle();
+      expect(protection.events, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'shows the choices only once the protection is active, and releases it on leave',
+    (tester) async {
+      final protection = RecordingScreenProtection(holdProtect: true);
+      await tester.pumpWidget(
+        wrap(
+          MnemonicVerifyScreen(
+            words: words,
+            screenProtection: protection,
+            challenges: challenges,
+            onVerified: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('1 of 2'), findsOneWidget);
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(find.text('Preparing a protected screen.'), findsOneWidget);
+
+      protection.completeProtect();
+      await tester.pumpAndSettle();
+      expect(find.byType(OutlinedButton), findsNWidgets(3));
+
+      await tester.pumpWidget(wrap(const SizedBox()));
+      await tester.pumpAndSettle();
+      expect(protection.events, ['protect', 'release']);
+    },
+  );
+
+  testWidgets('hides the choices while the app is not in the foreground', (
     tester,
   ) async {
     await tester.pumpWidget(
       wrap(
         MnemonicVerifyScreen(
-          words: MnemonicWords.parse(specVector12),
-          challenges: const [],
+          words: words,
+          screenProtection: const ScreenProtection.none(),
+          challenges: challenges,
           onVerified: () {},
         ),
       ),
     );
+    await tester.pump();
+    expect(find.byType(OutlinedButton), findsNWidgets(3));
 
+    // Like the reveal screen's test: `inactive`, since `paused` also stops the test binding's frames.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(find.byType(OutlinedButton), findsNothing);
+    expect(find.textContaining('Select word #'), findsNothing);
     expect(
-      tester.takeException(),
-      isA<ArgumentError>().having((e) => e.name, 'name', 'challenges'),
+      find.text('Hidden while the app is not in the foreground.'),
+      findsOneWidget,
     );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(find.byType(OutlinedButton), findsNWidgets(3));
   });
+
+  testWidgets(
+    'rejects an unusable challenge count before switching anything on',
+    (tester) async {
+      final protection = RecordingScreenProtection();
+      await tester.pumpWidget(
+        wrap(
+          MnemonicVerifyScreen(
+            words: words,
+            screenProtection: protection,
+            challengeCount: 13,
+            onVerified: () {},
+          ),
+        ),
+      );
+
+      expect(
+        tester.takeException(),
+        isA<ArgumentError>().having((e) => e.name, 'name', 'count'),
+      );
+      await tester.pumpWidget(wrap(const SizedBox()));
+      await tester.pumpAndSettle();
+      expect(protection.events, isEmpty);
+    },
+  );
 
   testWidgets('generates challenges from the phrase when none are given', (
     tester,
@@ -108,12 +205,14 @@ void main() {
       wrap(
         MnemonicVerifyScreen(
           words: words,
+          screenProtection: const ScreenProtection.none(),
           challengeCount: 3,
           choiceCount: 4,
           onVerified: () {},
         ),
       ),
     );
+    await tester.pump();
 
     expect(find.text('1 of 3'), findsOneWidget);
     expect(find.byType(OutlinedButton), findsNWidgets(4));
