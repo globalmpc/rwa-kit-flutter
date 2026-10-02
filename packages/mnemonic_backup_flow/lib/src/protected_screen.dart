@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import 'lifecycle.dart';
 import 'report.dart';
 import 'screen_protection.dart';
 import 'strings.dart';
@@ -20,8 +21,13 @@ import 'strings.dart';
 /// holds only the protection, a flag and a weak reference to the screen, never the screen itself,
 /// so a call that never answers cannot keep a disposed screen and its phrase in memory.
 ///
+/// [ScreenProtection.none] is recognised: there is nothing to switch on, so the screen is active
+/// from its first frame and nothing runs on dispose.
+///
 /// Each screen protects and releases on its own. The protection is read once, when the state is
-/// created. See the README on what that means for two protected screens that overlap.
+/// created. See the README on what that means for two protected screens that overlap. A subclass
+/// must not throw from `initState` after `super.initState()`: a State whose `initState` throws is
+/// never disposed, so the protection would stay on and the lifecycle observer registered.
 mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   ScreenProtection get screenProtection;
 
@@ -39,16 +45,40 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   String protectionPlaceholder(MnemonicBackupStrings strings) =>
       protectionFailed ? strings.protectionFailed : strings.revealPreparing;
 
+  /// True while the secret may be rendered: the protection is active and the app is in the
+  /// foreground, where the app switcher snapshot and a notification pull-down are not taken.
+  bool get secretVisible => protectionActive && _inForeground;
+
+  /// The text to show in place of the secret while [secretVisible] is false: why it is hidden.
+  String secretPlaceholder(MnemonicBackupStrings strings) =>
+      protectionActive ? strings.revealHidden : protectionPlaceholder(strings);
+
   late final ScreenProtection _protection;
   late final Future<void> _activation;
   final _released = _ReleasedFlag();
   _ProtectionStatus _status = _ProtectionStatus.pending;
+  late final _ForegroundWatch _foreground;
+  bool _inForeground = true;
 
   @override
   void initState() {
     super.initState();
+    _inForeground = isAppInForeground(WidgetsBinding.instance.lifecycleState);
+    _foreground = _ForegroundWatch((state) {
+      final next = isAppInForeground(state);
+      if (mounted && next != _inForeground) {
+        setState(() => _inForeground = next);
+      }
+    });
+    WidgetsBinding.instance.addObserver(_foreground);
     // Locals only in the work below: an instance member would capture the screen.
     final protection = _protection = screenProtection;
+    if (identical(protection, const ScreenProtection.none())) {
+      // Nothing to switch on: active from the first frame, nothing to release.
+      _status = _ProtectionStatus.active;
+      _activation = Future<void>.value();
+      return;
+    }
     final released = _released;
     final screen = WeakReference<ProtectedScreenState<StatefulWidget>>(this);
     _activation = _protect(protection, released, screen);
@@ -63,14 +93,27 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
 
   @override
   void dispose() {
-    unawaited(
-      _releaseAfter(_activation, protectionTimeout, _protection, _released),
-    );
+    WidgetsBinding.instance.removeObserver(_foreground);
+    if (!identical(_protection, const ScreenProtection.none())) {
+      unawaited(
+        _releaseAfter(_activation, protectionTimeout, _protection, _released),
+      );
+    }
     super.dispose();
   }
 }
 
 enum _ProtectionStatus { pending, active, failed }
+
+/// Observes the app lifecycle on behalf of a screen without making the State an observer.
+class _ForegroundWatch with WidgetsBindingObserver {
+  _ForegroundWatch(this._onChange);
+
+  final void Function(AppLifecycleState state) _onChange;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _onChange(state);
+}
 
 class _ReleasedFlag {
   bool value = false;

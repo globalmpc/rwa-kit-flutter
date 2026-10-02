@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>The backup flow: authenticate, reveal, verify, and the import screen</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="900" height="400" fill="#ffffff"/>
+  <text x="24" y="36" font-size="18" font-weight="600" fill="#111827">showMnemonicBackupFlow: authenticate, reveal, verify</text>
+
+  <g font-size="14" fill="#374151">
+    <rect x="40" y="60" width="230" height="164" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="66" cy="88" r="12" fill="#1d4ed8"/>
+    <text x="66" y="93" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="86" y="93" font-size="15" font-weight="600" fill="#111827">Authenticate</text>
+    <text x="58" y="124">Your PIN or biometric check.</text>
+    <text x="58" y="144">Nothing is rendered, and no</text>
+    <text x="58" y="164">route is pushed, before it</text>
+    <text x="58" y="184">returns true.</text>
+
+    <line x1="270" y1="142" x2="330" y2="142" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="335" y="60" width="230" height="164" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="361" cy="88" r="12" fill="#1d4ed8"/>
+    <text x="361" y="93" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="381" y="93" font-size="15" font-weight="600" fill="#111827">Reveal</text>
+    <text x="353" y="124">Words appear only after</text>
+    <text x="353" y="144">screenProtection.protect().</text>
+    <text x="353" y="164">Hidden when the app leaves</text>
+    <text x="353" y="184">the foreground. Copy clears</text>
+    <text x="353" y="204">the clipboard after 30 s.</text>
+
+    <line x1="565" y1="142" x2="625" y2="142" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="630" y="60" width="230" height="164" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="656" cy="88" r="12" fill="#1d4ed8"/>
+    <text x="656" y="93" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="676" y="93" font-size="15" font-weight="600" fill="#111827">Verify</text>
+    <text x="648" y="124">Words at random positions,</text>
+    <text x="648" y="144">multiple choice with decoys.</text>
+    <text x="648" y="164">A checkbox proves nothing;</text>
+    <text x="648" y="184">this proves the words were</text>
+    <text x="648" y="204">written down, in order.</text>
+  </g>
+
+  <g font-size="14" fill="#374151">
+    <rect x="40" y="248" width="820" height="80" rx="10" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="58" y="272" font-size="15" font-weight="600" fill="#111827">Import <tspan font-weight="400" fill="#374151" font-size="13">(MnemonicImportScreen, used on its own)</tspan></text>
+    <text x="58" y="294">Typed or pasted, with autocorrect off. Whitespace and case are normalised.</text>
+    <text x="58" y="314">A wrong count, an unknown word and a checksum mismatch are reported separately.</text>
+  </g>
+
+  <text x="40" y="360" font-size="13" fill="#6b7280">Each screen protects before it shows a word and releases once it is gone; the flow shares one hold, so the</text>
+  <text x="40" y="380" font-size="13" fill="#6b7280">plugin switches on once and off once. No native code: pass your screenshot plugin as a ScreenProtection.</text>
+</svg>

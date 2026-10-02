@@ -4,7 +4,30 @@ All notable changes to `mnemonic_backup_flow` are recorded here. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows
 [Semantic Versioning](https://semver.org/).
 
-## 0.1.0 - 2026-09-24
+## Unreleased
+
+### Changed
+
+- `MnemonicVerifyScreen` takes `screenProtection` and `protectionTimeout`, shows its choices,
+  which contain a real word of the phrase, only once the protection is active, and hides them
+  while the app is not in the foreground, as the reveal screen does. Breaking for apps that push
+  the verify screen themselves: pass the same `ScreenProtection` as to the reveal screen, and do
+  not push one while the other is still animating out.
+- `MnemonicImportScreen` hides its field while the app is not in the foreground, keeping what
+  was typed.
+- `ScreenProtection.none()` makes a screen active from its first frame, with nothing to release.
+- A verify screen with an unusable `challengeCount` or `choiceCount` fails when it is created,
+  before the protection is switched on, instead of on its first build.
+- README: a diagram of the three screens and the import screen, above the install line.
+
+### Fixed
+
+- `showMnemonicBackupFlow` hosts the reveal and verify steps in one route with one hold on the
+  protection, switched on before the first step renders and off after the route is gone. In
+  0.1.0 the verify route was pushed while the reveal route was still animating out, so the reveal
+  screen's release turned a plugin that is a single switch off during verification.
+
+## 0.1.0 - 2026-09-25
 
 First release.
 

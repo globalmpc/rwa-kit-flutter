@@ -4,6 +4,8 @@ Recovery-phrase reveal, verification and import screens for Flutter wallets.
 
 Every wallet team builds these screens, and the same faults come back: the phrase shown before the PIN is asked, no screenshot protection, a checkbox that "confirms" a backup nobody wrote down, the phrase left on the clipboard, and the phrase sitting in the app switcher snapshot. This package is the flow with those faults designed out. It has no native code and depends only on [`bip39_mnemonic`](https://pub.dev/packages/bip39_mnemonic) for word lists and checksums.
 
+![Diagram: authenticate, reveal, verify, plus the import screen](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/mnemonic_backup_flow/doc/how-it-works.svg)
+
 ```sh
 flutter pub add mnemonic_backup_flow
 ```
@@ -32,10 +34,10 @@ switch (result) {
 What the flow guarantees:
 
 1. **Nothing is rendered until `authenticate` returns true.** No route is pushed either.
-2. **The words appear only after `screenProtection.protect()` completes.** Until then the screen shows a placeholder, so there is no unprotected first frame. If `protect()` throws or does not answer within `protectionTimeout` (15 seconds by default, per screen), the error is reported through `FlutterError.reportError` and the screen says so; a protect that answers later still makes the screen active.
-3. **The words are hidden whenever the app is not in the foreground**, so the app switcher snapshot and a notification pull-down do not carry them.
+2. **The words appear only after `screenProtection.protect()` completes**, on the reveal step and on the verify step, whose choices contain a real word. Until then the screen shows a placeholder, so there is no unprotected first frame. If `protect()` throws or does not answer within `protectionTimeout` (15 seconds by default; the flow waits once for its route, a screen you push yourself waits on its own), the error is reported through `FlutterError.reportError` and the screen says so; a protect that answers later still makes the screen active.
+3. **The words are hidden whenever the app is not in the foreground**, on every screen, including the import field, so the app switcher snapshot and a notification pull-down do not carry them.
 4. **Verification asks for words at distinct random positions**, multiple choice with decoys from the word list, positions chosen with `Random.secure()`.
-5. **`release()` is called when the screen goes away**, including when the user backs out, after its `protect()` has settled or `protectionTimeout` later, whichever comes first, so a screen left early cannot leave the protection switched on, whether by a protect that finished later (it is released again when it answers) or by one whose reply was lost.
+5. **`release()` is called when the flow's route goes away**, including when the user backs out at either step, after its `protect()` has settled or `protectionTimeout` later, whichever comes first, so a route left early cannot leave the protection switched on, whether by a protect that finished later (it is released again when it answers) or by one whose reply was lost. The reveal and verify steps live in that one route with one hold on your protection, so the plugin is switched on once and off once, never off in between.
 
 ## Screen protection
 
@@ -55,15 +57,15 @@ final screenProtection = ScreenProtection.callbacks(
 );
 ```
 
-**Each screen protects on entry and releases on exit, on its own.** If your app pushes a second protected screen while the first is still animating out, the first screen's `release()` runs when it is disposed, after the second screen's `protect()`, and a plugin that treats the two as one switch ends up off. Two ways to avoid that: do not overlap two protected screens (the flow in this package never does), or turn the plugin on around your own route stack and pass `ScreenProtection.none()` to the screens.
+**Each screen protects on entry and releases on exit, on its own.** If your app pushes a second protected screen while the first is still animating out, the first screen's `release()` runs when it is disposed, after the second screen's `protect()`, and a plugin that treats the two as one switch ends up off. Two ways to avoid that: do not overlap two protected screens, or hold the plugin around your own route stack and pass `ScreenProtection.none()` to the screens. `showMnemonicBackupFlow` does the latter: its reveal and verify steps share one protected route.
 
-`ScreenProtection.none()` exists so that a demo can run without a plugin. It is a typed, deliberate opt-out; a release build should never pass it.
+`ScreenProtection.none()` exists so that a demo can run without a plugin, and for screens inside a route that already holds the plugin, as the flow's steps are. It is a typed, deliberate opt-out that renders on the first frame; a release build should never pass it to a screen that is not otherwise protected.
 
 **What the platforms can do.** Android can refuse screenshots and recordings outright (`FLAG_SECURE`). iOS cannot: plugins there detect a screenshot or a recording and cover the content, and the first frame of a recording may still be captured. Write your app's copy accordingly rather than promising more than iOS allows.
 
 ## Using the screens on their own
 
-Each screen is a plain widget you can push yourself. If you do, gate the reveal the way the flow does.
+Each screen is a plain widget you can push yourself. If you do, gate the reveal the way the flow does, and do not let two of them overlap (see above).
 
 ```dart
 MnemonicRevealScreen(
@@ -76,6 +78,7 @@ MnemonicRevealScreen(
 
 MnemonicVerifyScreen(
   words: words,
+  screenProtection: screenProtection,
   challengeCount: 3,
   choiceCount: 4,
   onVerified: () => Navigator.of(context).pop(true),
@@ -88,7 +91,7 @@ MnemonicImportScreen(
 )
 ```
 
-The import screen turns autocorrect and suggestions off, accepts any whitespace between words, ignores letter case, empties the clipboard after a paste, and reports three problems separately: a wrong word count (with the count), a word that is not in the list (with the word), and a checksum mismatch.
+The import screen turns autocorrect and suggestions off, accepts any whitespace between words, ignores letter case, hides the field while the app is not in the foreground, empties the clipboard after a paste, and reports three problems separately: a wrong word count (with the count), a word that is not in the list (with the word), and a checksum mismatch.
 
 ## Text and languages
 
@@ -120,9 +123,9 @@ words.sentence;  // the phrase, one space between words
 
 | Name | Purpose |
 |---|---|
-| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, allowCopy?, protectionTimeout?)` | Authenticate, reveal, verify. Returns `MnemonicBackupResult`. |
+| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, allowCopy?, protectionTimeout?)` | Authenticate, then reveal and verify in one protected route. Returns `MnemonicBackupResult`. |
 | `MnemonicRevealScreen` | Numbered words behind the screen protection, hidden while not in the foreground, optional copy with timed clearing. |
-| `MnemonicVerifyScreen` | Distinct-position multiple-choice check; retry after a wrong answer. |
+| `MnemonicVerifyScreen` | Distinct-position multiple-choice check behind the screen protection; retry after a wrong answer. |
 | `MnemonicImportScreen` | Typed or pasted phrase, validated, clipboard emptied after paste. |
 | `MnemonicWords` | Generate, parse, hold a phrase; redacted `toString`. |
 | `MnemonicFormatException` | `problem` is `wordCount`, `unknownWord` or `checksum`; `wordCount` and `word` carry the detail. |
