@@ -32,11 +32,12 @@ class MnemonicVerifyScreen extends StatefulWidget {
   final MnemonicWords words;
   final ScreenProtection screenProtection;
 
-  /// Called once every challenge has been answered correctly.
+  /// Called once, when every challenge has been answered correctly. Further taps are ignored, so
+  /// a double tap on the last answer cannot call it twice.
   final VoidCallback onVerified;
 
-  /// Challenges to use, at least one. When null, [challengeCount] challenges are generated on
-  /// first build.
+  /// Challenges to use, at least one. When null, [challengeCount] challenges are generated when the
+  /// screen is created; an unusable count throws then, before the protection is switched on.
   final List<VerificationChallenge>? challenges;
 
   final int challengeCount;
@@ -62,6 +63,7 @@ class _MnemonicVerifyScreenState extends State<MnemonicVerifyScreen>
   late final List<VerificationChallenge> _challenges;
   int _index = 0;
   bool _wrong = false;
+  bool _verified = false;
 
   @override
   ScreenProtection get screenProtection => widget.screenProtection;
@@ -90,6 +92,7 @@ class _MnemonicVerifyScreenState extends State<MnemonicVerifyScreen>
   }
 
   void _answer(String choice) {
+    if (_verified) return;
     final challenge = _challenges[_index];
     if (!challenge.accepts(choice)) {
       setState(() => _wrong = true);
@@ -97,6 +100,7 @@ class _MnemonicVerifyScreenState extends State<MnemonicVerifyScreen>
       return;
     }
     if (_index + 1 == _challenges.length) {
+      _verified = true;
       widget.onVerified();
       return;
     }

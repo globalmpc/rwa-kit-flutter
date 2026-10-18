@@ -2,7 +2,8 @@
 ///
 /// This package contains no native code, so the app supplies the implementation, usually by
 /// wrapping the screenshot plugin it already uses. Each screen calls [protect] before it renders
-/// the phrase, waits for it, and calls [release] once the screen is gone.
+/// the phrase, waits for it, and calls [release] once the screen is gone. [ScreenProtection.none]
+/// is the exception: neither is called, and the screen renders on its first frame.
 ///
 /// What a platform can do differs: Android can refuse screenshots and recordings outright
 /// (`FLAG_SECURE`); iOS cannot, and plugins there hide the content behind an overlay when a
@@ -53,3 +54,8 @@ class _CallbackScreenProtection extends ScreenProtection {
   @override
   Future<void> release() => _release();
 }
+
+/// True for the protection `ScreenProtection.none()` returns, whether or not it was created with
+/// `const`. Not exported: the screens use it to skip protect and release.
+bool isNoScreenProtection(ScreenProtection protection) =>
+    protection is _NoScreenProtection;

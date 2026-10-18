@@ -198,6 +198,50 @@ void main() {
     },
   );
 
+  testWidgets(
+    'treats ScreenProtection.none() without const like the const one: choices on the first frame',
+    (tester) async {
+      final protection = ScreenProtection.none();
+      await tester.pumpWidget(
+        wrap(
+          MnemonicVerifyScreen(
+            words: words,
+            screenProtection: protection,
+            challenges: challenges,
+            onVerified: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(OutlinedButton), findsNWidgets(3));
+      expect(find.text('Preparing a protected screen.'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'calls onVerified once even when the last answer is tapped twice',
+    (tester) async {
+      var verified = 0;
+      await tester.pumpWidget(
+        wrap(
+          MnemonicVerifyScreen(
+            words: words,
+            screenProtection: const ScreenProtection.none(),
+            challenges: challenges,
+            onVerified: () => verified++,
+          ),
+        ),
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'abandon'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'about'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'about'));
+      await tester.pump();
+
+      expect(verified, 1);
+    },
+  );
+
   testWidgets('generates challenges from the phrase when none are given', (
     tester,
   ) async {
