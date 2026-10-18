@@ -6,16 +6,25 @@ All notable changes to `mnemonic_backup_flow` are recorded here. The format foll
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-17
+
+Upgrading from 0.1.0: apps that use `showMnemonicBackupFlow` need no code change. Apps that push
+`MnemonicVerifyScreen` themselves now pass a `screenProtection`. With a screenshot plugin that is a
+single on/off switch, the safe choice is to hold the plugin around the app's own route stack, wait
+for its `protect()` to complete, and pass `ScreenProtection.none()` to every screen: a screen's
+release happens after it has gone and can switch such a plugin off for the next protected screen.
+The README's "Screen protection" section has the details.
+
 ### Changed
 
 - `MnemonicVerifyScreen` takes `screenProtection` and `protectionTimeout`, shows its choices,
   which contain a real word of the phrase, only once the protection is active, and hides them
   while the app is not in the foreground, as the reveal screen does. Breaking for apps that push
-  the verify screen themselves: pass the same `ScreenProtection` as to the reveal screen, and do
-  not push one while the other is still animating out.
+  the verify screen themselves: pass a `ScreenProtection`, as the upgrade note above describes.
 - `MnemonicImportScreen` hides its field while the app is not in the foreground, keeping what
   was typed.
-- `ScreenProtection.none()` makes a screen active from its first frame, with nothing to release.
+- `ScreenProtection.none()` makes a screen active from its first frame, with nothing to release,
+  whether or not it is created with `const`.
 - A verify screen with an unusable `challengeCount` or `choiceCount` fails when it is created,
   before the protection is switched on, instead of on its first build.
 - README: a diagram of the three screens and the import screen, above the install line.
@@ -26,6 +35,13 @@ All notable changes to `mnemonic_backup_flow` are recorded here. The format foll
   protection, switched on before the first step renders and off after the route is gone. In
   0.1.0 the verify route was pushed while the reveal route was still animating out, so the reveal
   screen's release turned a plugin that is a single switch off during verification.
+- A double tap on the last correct answer called `onVerified` twice when the callback did not
+  leave the screen at once. Taps after verification are ignored.
+- README: states what `verified` proves (the right word picked at every position asked, retries
+  allowed, not a written-down phrase), that a screen given the app's protection never shows the
+  words before `protect()` completes however late it answers, and when the release of a screen or
+  of the flow's route, which happens after it has gone, can switch a single-switch plugin off for
+  the protected screen showing next.
 
 ## 0.1.0 - 2026-09-25
 

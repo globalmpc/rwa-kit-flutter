@@ -15,7 +15,8 @@ enum MnemonicBackupResult {
   /// The user left before the backup was verified, from either screen.
   abandoned,
 
-  /// The user saw the phrase and answered every challenge.
+  /// The user saw the phrase, then picked the right word at every position asked. Wrong answers
+  /// can be retried without limit, so this does not prove the phrase was written down.
   verified,
 }
 

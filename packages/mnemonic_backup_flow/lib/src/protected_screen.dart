@@ -73,7 +73,7 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
     WidgetsBinding.instance.addObserver(_foreground);
     // Locals only in the work below: an instance member would capture the screen.
     final protection = _protection = screenProtection;
-    if (identical(protection, const ScreenProtection.none())) {
+    if (isNoScreenProtection(protection)) {
       // Nothing to switch on: active from the first frame, nothing to release.
       _status = _ProtectionStatus.active;
       _activation = Future<void>.value();
@@ -94,7 +94,7 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_foreground);
-    if (!identical(_protection, const ScreenProtection.none())) {
+    if (!isNoScreenProtection(_protection)) {
       unawaited(
         _releaseAfter(_activation, protectionTimeout, _protection, _released),
       );
