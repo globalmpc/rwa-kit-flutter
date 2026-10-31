@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 494" width="900" height="494" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Address poisoning, and how address_guard catches it before a payment</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="900" height="494" fill="#ffffff"/>
+
+  <text x="24" y="34" font-size="18" font-weight="600" fill="#111827">The attack: a look-alike planted in your history</text>
+  <g font-size="14" fill="#374151">
+    <rect x="40" y="52" width="230" height="172" rx="18" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+    <circle cx="66" cy="80" r="12" fill="#b91c1c"/>
+    <text x="66" y="85" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="86" y="85" font-size="15" font-weight="600" fill="#111827">You pay someone</text>
+    <text x="58" y="116" font-family="Menlo, Consolas, monospace" font-size="13">0xa1b2c3d4...12345678</text>
+    <text x="58" y="140">Your wallet history now</text>
+    <text x="58" y="160">shows it, shortened:</text>
+    <text x="58" y="182" font-family="Menlo, Consolas, monospace" font-size="13">0xa1b2...5678</text>
+
+    <line x1="270" y1="138" x2="330" y2="138" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="335" y="52" width="230" height="172" rx="18" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+    <circle cx="361" cy="80" r="12" fill="#b91c1c"/>
+    <text x="361" y="85" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="381" y="85" font-size="15" font-weight="600" fill="#111827">An attacker copies it</text>
+    <text x="353" y="116">Generates an address with</text>
+    <text x="353" y="136">the same start and end, then</text>
+    <text x="353" y="156">sends you a tiny or zero-value</text>
+    <text x="353" y="176">transfer from it, so it sits</text>
+    <text x="353" y="196">in your history too.</text>
+
+    <line x1="565" y1="138" x2="625" y2="138" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="630" y="52" width="230" height="172" rx="18" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+    <circle cx="656" cy="80" r="12" fill="#b91c1c"/>
+    <text x="656" y="85" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="676" y="85" font-size="15" font-weight="600" fill="#111827">You copy the wrong one</text>
+    <text x="648" y="116">Next time, you copy</text>
+    <text x="648" y="138" font-family="Menlo, Consolas, monospace" font-size="13">0xa1b2...5678</text>
+    <text x="648" y="160">from history. Shortened, the</text>
+    <text x="648" y="180">two look the same. The</text>
+    <text x="648" y="200">payment goes to the attacker.</text>
+  </g>
+
+  <text x="24" y="282" font-size="18" font-weight="600" fill="#111827">The check: address_guard, before the user confirms</text>
+  <g font-size="14" fill="#374151">
+    <rect x="40" y="300" width="230" height="170" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="66" cy="328" r="12" fill="#1d4ed8"/>
+    <text x="66" y="333" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="86" y="333" font-size="15" font-weight="600" fill="#111827">Known recipients</text>
+    <text x="58" y="364">deriveKnownRecipients reads</text>
+    <text x="58" y="384">only transactions the user</text>
+    <text x="58" y="404">signed and that named the</text>
+    <text x="58" y="424">recipient. The planted</text>
+    <text x="58" y="444">transfer never counts.</text>
+
+    <line x1="270" y1="385" x2="330" y2="385" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="335" y="300" width="230" height="170" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="361" cy="328" r="12" fill="#1d4ed8"/>
+    <text x="361" y="333" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="381" y="333" font-size="15" font-weight="600" fill="#111827">assessRecipient</text>
+    <text x="353" y="364">Same start and end, different</text>
+    <text x="353" y="384">middle: lookalike.</text>
+    <text x="353" y="404">Exact match: known.</text>
+    <text x="353" y="424">Altered casing: badChecksum.</text>
+    <text x="353" y="444">Anything else: firstTime.</text>
+
+    <line x1="565" y1="385" x2="625" y2="385" stroke="#374151" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="630" y="300" width="230" height="170" rx="18" fill="#f9fafb" stroke="#374151" stroke-width="1.5"/>
+    <circle cx="656" cy="328" r="12" fill="#1d4ed8"/>
+    <text x="656" y="333" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="676" y="333" font-size="15" font-weight="600" fill="#111827">RecipientConfirmCard</text>
+    <text x="648" y="364">The full address, middle in</text>
+    <text x="648" y="384">bold, every differing character</text>
+    <text x="648" y="404">highlighted. A look-alike</text>
+    <text x="648" y="424">cannot be confirmed; a new</text>
+    <text x="648" y="444">address needs a full check.</text>
+  </g>
+</svg>
