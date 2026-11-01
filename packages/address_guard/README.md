@@ -4,7 +4,7 @@ Catch address-poisoning look-alikes before a Flutter wallet sends.
 
 `address_guard` compares the address a user is about to pay with the addresses that user has really paid before, checks its EIP-55 checksum, and shows it on a confirm card that makes the difference visible. It is pure Dart plus one Flutter widget: no native code, no network calls, no keys and no storage.
 
-![Diagram: how an attacker plants a look-alike in a wallet's history, and how address_guard catches it](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/how-it-works.svg)
+![A known recipient and the address about to be paid, side by side. The first and last four characters match, 30 of the 32 middle characters differ, and address_guard returns the verdict lookalike.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/hero.webp)
 
 ```sh
 flutter pub add address_guard
@@ -23,6 +23,8 @@ This is not a rare edge case. A study published at USENIX Security 2025 measured
 
 Two things make it hard to catch by hand: the look-alike really is in the user's history, and the part that differs is the part every interface hides.
 
+![Animation: a paid address and a planted look-alike with the same first and last four characters. Shortened, both read 0xa1b2…5678; in full, 30 of the 32 middle characters differ.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/attack.webp)
+
 ## What this package does
 
 - **Knows who the user has really paid.** It reads the transactions the user's own account signed and keeps only the recipients those signatures named. The planted transfer of step 3 never counts, because the user did not sign it.
@@ -30,6 +32,8 @@ Two things make it hard to catch by hand: the look-alike really is in the user's
 - **Checks the checksum.** A mixed-case address carries an EIP-55 checksum; casing that contradicts it means a character was changed. All lower case or all capitals carries none, and is fine.
 - **Shows the whole address.** `RecipientConfirmCard` prints all 40 characters in groups of four, sets the middle in bold, highlights every character that differs from the imitated address, and will not confirm a look-alike.
 - **Binds the confirmation.** What the user confirmed is one exact address on one exact chain, checked again just before signing.
+
+![Animation: assessRecipient compares the address about to be paid with a known recipient, character by character. The first four and last four match, the middle differs, and the verdict is lookalike.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/check.webp)
 
 ## Check a recipient
 
@@ -72,6 +76,8 @@ A `SentTransaction` is the wallet's own record of something it broadcast: `from`
 > **Build `SentTransaction` from the transactions themselves, never from a token-transfer list.** Use the wallet's own record of what it signed, or `eth_getTransactionByHash` with the receipt status. An indexer's "token transfers" endpoint and `Transfer` logs name a sender that anyone can forge; a record built from them would let a planted look-alike pass as a payment the user made, which is the one thing this package exists to stop. For an ERC-20 payment, `to` is the token contract and `input` is the `transfer` calldata.
 
 ## Who counts as a known recipient
+
+![Animation: six transactions meet the trust rule. The two sends the owner signed become known recipients; the planted transferFrom, a Transfer log, an approve and a reverted send are turned away.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/trust-rule.webp)
 
 Getting this right is the whole point, because an attacker's goal is to become one. `deriveKnownRecipients(owner, transactions)` keeps a recipient only when all of these hold:
 
