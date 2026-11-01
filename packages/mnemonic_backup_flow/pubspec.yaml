@@ -1,6 +1,7 @@
 name: mnemonic_backup_flow
 description: Recovery-phrase reveal, verification and import screens for Flutter wallets, with a PIN gate, screenshot-protection hooks, random-word checks and clipboard clearing.
 version: 0.2.0
+homepage: https://www.globalmpc.tech
 repository: https://github.com/globalmpc/rwa-kit-flutter
 issue_tracker: https://github.com/globalmpc/rwa-kit-flutter/issues
 topics:

@@ -1,5 +1,7 @@
 # rwa-kit-flutter
 
+Built by [MPC (Mineral Project Coin)](https://www.globalmpc.tech) — mining real-world asset (RWA) infrastructure.
+
 Open-source Flutter packages for wallet and real-world-asset (RWA) apps, published on pub.dev by Global MPC. One repository, one folder per package. The packages are built for wallets on **BNB Smart Chain (BSC)** and other EVM networks.
 
 ## Technology Stack

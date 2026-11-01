@@ -1,5 +1,7 @@
 # mnemonic_backup_flow
 
+Built by [MPC (Mineral Project Coin)](https://www.globalmpc.tech) — mining real-world asset (RWA) infrastructure.
+
 Recovery-phrase reveal, verification and import screens for Flutter wallets.
 
 Every wallet team builds these screens, and the same faults come back: the phrase shown before the PIN is asked, no screenshot protection, a checkbox that "confirms" a backup nobody wrote down, the phrase left on the clipboard, and the phrase sitting in the app switcher snapshot. This package is the flow with those faults designed out. What it can check is what happens on screen: a `verified` result means the user picked the right word at every position asked, in the app, with the positions and decoys the package generates (or the challenges your app supplies). It does not prove the phrase was written down or kept safe, and since a wrong answer can be retried without limit, it can also be reached by trying every choice; an app that wants to limit attempts pushes `MnemonicVerifyScreen` itself and acts on `onWrongAnswer`, since the one-call flow does not limit them. It has no native code and depends only on [`bip39_mnemonic`](https://pub.dev/packages/bip39_mnemonic) for word lists and checksums.
