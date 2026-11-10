@@ -23,11 +23,12 @@ enum MnemonicBackupResult {
 /// Runs the whole backup: authenticate, reveal, verify.
 ///
 /// [authenticate] is the app's PIN or biometric check. The phrase is not rendered, and no route
-/// is pushed, until it returns true. The reveal and verify steps are shown in one full-screen
-/// dialog route on the navigator of [context], which holds [screenProtection] once: switched on
-/// before the first step renders and off after the route is gone, so the two steps never hold the
-/// plugin twice and it is never off between them. [protectionTimeout] is how long that route
-/// waits for the protection; null waits without limit.
+/// is pushed, until it returns true. The reveal step then keeps the words covered until the user
+/// asks to see them, unless [obscureUntilShown] is false. The reveal and verify steps are shown
+/// in one full-screen dialog route on the navigator of [context], which holds [screenProtection]
+/// once: switched on before the first step renders and off after the route is gone, so the two
+/// steps never hold the plugin twice and it is never off between them. [protectionTimeout] is
+/// how long that route waits for the protection; null waits without limit.
 Future<MnemonicBackupResult> showMnemonicBackupFlow(
   BuildContext context, {
   required MnemonicWords words,
@@ -36,6 +37,7 @@ Future<MnemonicBackupResult> showMnemonicBackupFlow(
   MnemonicBackupStrings strings = const MnemonicBackupStrings(),
   int challengeCount = 3,
   bool allowCopy = false,
+  bool obscureUntilShown = true,
   Duration? protectionTimeout = const Duration(seconds: 15),
 }) async {
   final navigator = Navigator.of(context);
@@ -51,6 +53,7 @@ Future<MnemonicBackupResult> showMnemonicBackupFlow(
         strings: strings,
         challengeCount: challengeCount,
         allowCopy: allowCopy,
+        obscureUntilShown: obscureUntilShown,
         protectionTimeout: protectionTimeout,
       ),
     ),
@@ -70,6 +73,7 @@ class _BackupFlow extends StatefulWidget {
     required this.strings,
     required this.challengeCount,
     required this.allowCopy,
+    required this.obscureUntilShown,
     required this.protectionTimeout,
   });
 
@@ -78,6 +82,7 @@ class _BackupFlow extends StatefulWidget {
   final MnemonicBackupStrings strings;
   final int challengeCount;
   final bool allowCopy;
+  final bool obscureUntilShown;
   final Duration? protectionTimeout;
 
   @override
@@ -117,6 +122,7 @@ class _BackupFlowState extends State<_BackupFlow>
         screenProtection: const ScreenProtection.none(),
         strings: strings,
         allowCopy: widget.allowCopy,
+        obscureUntilShown: widget.obscureUntilShown,
         onConfirmed: () => setState(() => _wroteDown = true),
       );
     }

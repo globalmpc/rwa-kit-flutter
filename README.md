@@ -19,7 +19,7 @@ Open-source Flutter packages for wallet and real-world-asset (RWA) apps, publish
 
 | Package | What it does | pub.dev |
 |---|---|---|
-| [`mnemonic_backup_flow`](packages/mnemonic_backup_flow) | Recovery-phrase reveal, verification and import screens for wallets: PIN gate, screenshot-protection hooks, random-word checks, clipboard clearing, 12 to 24 words, translatable text. No native code. | [![pub](https://img.shields.io/pub/v/mnemonic_backup_flow)](https://pub.dev/packages/mnemonic_backup_flow) |
+| [`mnemonic_backup_flow`](packages/mnemonic_backup_flow) | Recovery-phrase reveal, verification and import screens for wallets: PIN gate, words covered until the user asks to see them, screenshot-protection hooks, random-word checks, clipboard clearing, 12 to 24 words, translatable text. No native code. | [![pub](https://img.shields.io/pub/v/mnemonic_backup_flow)](https://pub.dev/packages/mnemonic_backup_flow) |
 | [`address_guard`](packages/address_guard) | Catches address-poisoning look-alikes before a wallet sends: compares a recipient with the addresses the user has really paid, from the transactions they signed, checks the EIP-55 checksum, and shows the full address on a confirm card with the differing characters highlighted. No native code, no network calls. | [![pub](https://img.shields.io/pub/v/address_guard)](https://pub.dev/packages/address_guard) |
 
 ## Layout

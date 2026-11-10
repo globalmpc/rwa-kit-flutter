@@ -26,13 +26,14 @@ void main() {
   );
 
   testWidgets(
-    'shows nothing until the screen protection is active, then the numbered words',
+    'keeps the words covered until the user asks, and only after protection is active',
     (tester) async {
       final protection = RecordingScreenProtection(holdProtect: true);
       await tester.pumpWidget(wrap(reveal(protection)));
 
       expect(protection.events, ['protect']);
       expect(find.text('Preparing a protected screen.'), findsOneWidget);
+      expect(find.text('Show the words'), findsNothing);
       expect(find.textContaining('abandon'), findsNothing);
       expect(
         tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
@@ -41,6 +42,16 @@ void main() {
 
       protection.completeProtect();
       await tester.pumpAndSettle();
+
+      expect(find.text('Show the words'), findsOneWidget);
+      expect(find.textContaining('abandon'), findsNothing);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.text('Show the words'));
+      await tester.pump();
 
       expect(find.text('1. abandon'), findsOneWidget);
       expect(find.text('12. about'), findsOneWidget);
@@ -56,6 +67,8 @@ void main() {
   ) async {
     await tester.pumpWidget(wrap(reveal(RecordingScreenProtection())));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Show the words'));
+    await tester.pump();
     expect(find.text('1. abandon'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -68,8 +81,27 @@ void main() {
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    expect(find.text('1. abandon'), findsOneWidget);
+    expect(find.text('1. abandon'), findsNothing);
+    expect(find.text('Show the words'), findsOneWidget);
   });
+
+  testWidgets(
+    'covers the words again when the app returns before the background frame',
+    (tester) async {
+      await tester.pumpWidget(wrap(reveal(RecordingScreenProtection())));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Show the words'));
+      await tester.pump();
+      expect(find.text('1. abandon'), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(find.text('1. abandon'), findsNothing);
+      expect(find.text('Show the words'), findsOneWidget);
+    },
+  );
 
   testWidgets('releases the protection when the screen goes away', (
     tester,
@@ -191,7 +223,8 @@ void main() {
     expect(tester.takeException(), isA<StateError>());
     expect(protection.events, ['protect', 'release', 'protect', 'release']);
     expect(working.events, ['protect']);
-    expect(find.text('1. abandon'), findsOneWidget);
+    expect(find.textContaining('abandon'), findsNothing);
+    expect(find.text('Show the words'), findsOneWidget);
   });
 
   testWidgets(
@@ -249,6 +282,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Show the words'));
+    await tester.pump();
 
     clipboard.failNextSetData = true;
     await tester.tap(find.text('Copy'));
@@ -276,7 +311,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(protection.events, ['protect', 'protect']);
-    expect(find.text('1. abandon'), findsNWidgets(2));
+    expect(find.textContaining('abandon'), findsNothing);
+    expect(find.text('Show the words'), findsNWidgets(2));
 
     await tester.pumpWidget(wrap(const SizedBox()));
     await tester.pumpAndSettle();
@@ -296,6 +332,9 @@ void main() {
 
       protection.completeProtect();
       await tester.pumpAndSettle();
+      expect(find.textContaining('abandon'), findsNothing);
+      await tester.tap(find.text('Show the words'));
+      await tester.pump();
       expect(find.text('1. abandon'), findsOneWidget);
 
       await tester.pumpWidget(wrap(const SizedBox()));
@@ -332,7 +371,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('I wrote it down'));
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.text('Show the words'));
+    await tester.pump();
+    await tester.tap(find.text('Continue'));
 
     expect(confirmed, 1);
   });
@@ -367,6 +413,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Copy'));
       await tester.pump();
+      expect(clipboard.text, isNull);
+
+      await tester.tap(find.text('Show the words'));
+      await tester.pump();
+      await tester.tap(find.text('Copy'));
+      await tester.pump();
 
       expect(clipboard.text, specVector12);
       expect(
@@ -398,5 +450,30 @@ void main() {
 
     expect(find.text('Deine Wiederherstellungsphrase'), findsOneWidget);
     expect(find.text('Aufgeschrieben'), findsOneWidget);
+    expect(find.text('Show the words'), findsOneWidget);
   });
+
+  testWidgets(
+    'shows the words as soon as protection is active when the cover is turned off',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          MnemonicRevealScreen(
+            words: words,
+            screenProtection: RecordingScreenProtection(),
+            onConfirmed: () {},
+            obscureUntilShown: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('1. abandon'), findsOneWidget);
+      expect(find.text('Show the words'), findsNothing);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNotNull,
+      );
+    },
+  );
 }

@@ -14,7 +14,9 @@ class MnemonicBackupStrings {
     this.revealHidden = 'Hidden while the app is not in the foreground.',
     this.protectionFailed =
         'Screen protection could not be enabled. Go back and try again.',
-    this.revealConfirm = 'I wrote it down',
+    this.revealCovered = 'The words stay hidden until you ask to see them.',
+    this.revealShow = 'Show the words',
+    this.revealConfirm = 'Continue',
     this.copy = 'Copy',
     this.copiedFor = _copiedFor,
     this.copyFailed = 'Could not copy. Write the words down instead.',
@@ -46,6 +48,14 @@ class MnemonicBackupStrings {
 
   /// Shown in place of the words or the input when the screen protection failed or timed out.
   final String protectionFailed;
+
+  /// Shown in place of the words until the user asks to see them.
+  final String revealCovered;
+
+  /// The button that uncovers the words.
+  final String revealShow;
+
+  /// The button that leaves the reveal step. It stays disabled until the words have been on screen.
   final String revealConfirm;
   final String copy;
 

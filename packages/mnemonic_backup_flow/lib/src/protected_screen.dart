@@ -49,6 +49,12 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   /// foreground, where the app switcher snapshot and a notification pull-down are not taken.
   bool get secretVisible => protectionActive && _inForeground;
 
+  /// Called synchronously when the app leaves the foreground, before the next frame, including
+  /// when a resumed notification arrives before that frame is built. The secret is already
+  /// withheld for a background frame by [secretVisible]. Override this to drop state that must
+  /// not survive the return. Do not throw.
+  void onLeftForeground() {}
+
   /// The text to show in place of the secret while [secretVisible] is false: why it is hidden.
   String secretPlaceholder(MnemonicBackupStrings strings) =>
       protectionActive ? strings.revealHidden : protectionPlaceholder(strings);
@@ -66,6 +72,11 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
     _inForeground = isAppInForeground(WidgetsBinding.instance.lifecycleState);
     _foreground = _ForegroundWatch((state) {
       final next = isAppInForeground(state);
+      // Clear cover state here, not after a frame. A resumed notification can arrive before
+      // the background frame is built, and a flag cleared only on that frame would still be set.
+      if (mounted && _inForeground && !next) {
+        onLeftForeground();
+      }
       if (mounted && next != _inForeground) {
         setState(() => _inForeground = next);
       }

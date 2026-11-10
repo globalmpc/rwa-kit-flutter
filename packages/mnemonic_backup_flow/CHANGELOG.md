@@ -6,6 +6,30 @@ All notable changes to `mnemonic_backup_flow` are recorded here. The format foll
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-09
+
+Upgrading from 0.2.0: apps need no code change. The reveal step keeps the words covered until the
+user taps Show the words, and covers them again when the app leaves the foreground. The button
+that leaves the reveal step says Continue, and it stays disabled until the words have been on
+screen. Pass `obscureUntilShown: false` to show the words as soon as the protection is active,
+which is what 0.2.0 did. Set `revealConfirm` to `I wrote it down` to keep the previous label.
+
+### Added
+
+- `obscureUntilShown` on `MnemonicRevealScreen` and `showMnemonicBackupFlow`. True by default.
+- `MnemonicBackupStrings.revealCovered` and `revealShow`, so the cover can be translated.
+- A README figure of the same backup without the package and with it. The words in it are an
+  example, not a recovery phrase.
+
+### Changed
+
+- The default `revealConfirm` is Continue. The reveal step is not the check; the word quiz is.
+
+### Fixed
+
+- Leaving the foreground covers the words again even when the app returns before the background
+  frame is built. The cover flag is cleared on the lifecycle notification, not after that frame.
+
 ## 0.2.0 - 2026-10-17
 
 Upgrading from 0.1.0: apps that use `showMnemonicBackupFlow` need no code change. Apps that push
