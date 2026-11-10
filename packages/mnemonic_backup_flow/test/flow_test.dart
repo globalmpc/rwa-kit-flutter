@@ -39,6 +39,13 @@ void main() {
     return captured;
   }
 
+  Future<void> leaveReveal(WidgetTester tester) async {
+    await tester.tap(find.text('Show the words'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> answerCurrentChallenge(WidgetTester tester) async {
     final prompt = tester
         .widget<Text>(find.textContaining('Select word #'))
@@ -81,7 +88,8 @@ void main() {
     gate.complete(true);
     await tester.pumpAndSettle();
     expect(find.text('Your recovery phrase'), findsOneWidget);
-    expect(find.text('1. abandon'), findsOneWidget);
+    expect(find.text('Show the words'), findsOneWidget);
+    expect(find.textContaining('abandon'), findsNothing);
   });
 
   testWidgets('reports abandoned when the user backs out of the reveal', (
@@ -117,8 +125,7 @@ void main() {
       await tester.tap(find.text('Back up'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('I wrote it down'));
-      await tester.pumpAndSettle();
+      await leaveReveal(tester);
       expect(find.text('Confirm your backup'), findsOneWidget);
 
       for (var i = 0; i < 3; i++) {
@@ -144,8 +151,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('Back up'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('I wrote it down'));
-      await tester.pumpAndSettle();
+      await leaveReveal(tester);
       expect(find.text('Confirm your backup'), findsOneWidget);
       expect(find.byType(OutlinedButton), findsNWidgets(4));
 
@@ -171,7 +177,8 @@ void main() {
 
     held.completeProtect();
     await tester.pumpAndSettle();
-    expect(find.text('1. abandon'), findsOneWidget);
+    expect(find.textContaining('abandon'), findsNothing);
+    expect(find.text('Show the words'), findsOneWidget);
     expect(find.text('Preparing a protected screen.'), findsNothing);
   });
 
@@ -210,7 +217,9 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('Back up'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('I wrote it down'));
+      await tester.tap(find.text('Show the words'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
       await tester.pump();
       expect(
         find.byType(OutlinedButton),

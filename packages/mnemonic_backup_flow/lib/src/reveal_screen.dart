@@ -7,8 +7,9 @@ import 'screen_protection.dart';
 import 'sensitive_clipboard.dart';
 import 'strings.dart';
 
-/// Shows the phrase, numbered, once the screen protection is active, and hides it while the app
-/// is not in the foreground so the app switcher snapshot does not carry it.
+/// Shows the phrase, numbered, once the screen protection is active and the user has asked to
+/// see it, and hides it while the app is not in the foreground so the app switcher snapshot does
+/// not carry it.
 ///
 /// Reaching this screen is the app's decision. [showMnemonicBackupFlow] only pushes it after the
 /// caller's authentication returned true; if you push it yourself, gate it the same way.
@@ -20,6 +21,7 @@ class MnemonicRevealScreen extends StatefulWidget {
     required this.onConfirmed,
     this.strings = const MnemonicBackupStrings(),
     this.allowCopy = false,
+    this.obscureUntilShown = true,
     this.clipboardClearAfter = const Duration(seconds: 30),
     this.protectionTimeout = const Duration(seconds: 15),
   });
@@ -35,6 +37,11 @@ class MnemonicRevealScreen extends StatefulWidget {
   /// Whether to offer a copy button. Off by default: a clipboard is readable by other apps.
   final bool allowCopy;
 
+  /// When true, the words stay covered until the user asks to see them, and they are covered
+  /// again whenever the app leaves the foreground. The confirm button stays disabled until the
+  /// words are on screen. False shows the words as soon as the protection is active.
+  final bool obscureUntilShown;
+
   /// How long a copied phrase stays on the clipboard.
   final Duration clipboardClearAfter;
 
@@ -48,12 +55,25 @@ class MnemonicRevealScreen extends StatefulWidget {
 class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
     with ProtectedScreenState<MnemonicRevealScreen> {
   SensitiveClipboard? _clipboard;
+  bool _shown = false;
+
+  /// The words are painted only while the protection allows it and, unless the screen was asked
+  /// not to, the user has uncovered them since the app last left the foreground.
+  bool get _wordsOnScreen =>
+      secretVisible && (!widget.obscureUntilShown || _shown);
 
   @override
   ScreenProtection get screenProtection => widget.screenProtection;
 
   @override
   Duration? get protectionTimeout => widget.protectionTimeout;
+
+  @override
+  void onLeftForeground() {
+    // Cleared on the lifecycle notification itself. Waiting for a background frame would leave
+    // the words showing if the app returned before that frame was built.
+    _shown = false;
+  }
 
   @override
   void dispose() {
@@ -83,7 +103,7 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
   Widget build(BuildContext context) {
     final strings = widget.strings;
     final theme = Theme.of(context);
-    final visible = secretVisible;
+    final visible = _wordsOnScreen;
     return Scaffold(
       appBar: AppBar(title: Text(strings.revealTitle)),
       body: SafeArea(
@@ -94,17 +114,7 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
             children: [
               Text(strings.revealWarning, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 16),
-              Expanded(
-                child: visible
-                    ? _WordGrid(words: widget.words.words)
-                    : Center(
-                        child: Text(
-                          secretPlaceholder(strings),
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge,
-                        ),
-                      ),
-              ),
+              Expanded(child: _body(strings, theme, visible)),
               if (widget.allowCopy)
                 TextButton.icon(
                   onPressed: visible ? _copy : null,
@@ -121,6 +131,52 @@ class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
         ),
       ),
     );
+  }
+
+  Widget _body(MnemonicBackupStrings strings, ThemeData theme, bool visible) {
+    if (!secretVisible) {
+      return Center(
+        child: Text(
+          secretPlaceholder(strings),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyLarge,
+        ),
+      );
+    }
+    if (!visible) {
+      // A scroll view, not a column that must fit: two of these screens can share a short
+      // route, and a column taller than that space is an overflow.
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        strings.revealCovered,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: () => setState(() => _shown = true),
+                        child: Text(strings.revealShow),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+    return _WordGrid(words: widget.words.words);
   }
 }
 

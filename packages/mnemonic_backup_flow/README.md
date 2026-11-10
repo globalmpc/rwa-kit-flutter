@@ -4,9 +4,9 @@ Built by [MPC (Mineral Project Coin)](https://www.globalmpc.tech) — mining rea
 
 Recovery-phrase reveal, verification and import screens for Flutter wallets.
 
-Every wallet team builds these screens, and the same faults come back: the phrase shown before the PIN is asked, no screenshot protection, a checkbox that "confirms" a backup nobody wrote down, the phrase left on the clipboard, and the phrase sitting in the app switcher snapshot. This package is the flow with those faults designed out. What it can check is what happens on screen: a `verified` result means the user picked the right word at every position asked, in the app, with the positions and decoys the package generates (or the challenges your app supplies). It does not prove the phrase was written down or kept safe, and since a wrong answer can be retried without limit, it can also be reached by trying every choice; an app that wants to limit attempts pushes `MnemonicVerifyScreen` itself and acts on `onWrongAnswer`, since the one-call flow does not limit them. It has no native code and depends only on [`bip39_mnemonic`](https://pub.dev/packages/bip39_mnemonic) for word lists and checksums.
+Every wallet team builds these screens, and the same faults come back: the phrase shown before the PIN is asked, the phrase on screen the moment the route appears, no screenshot protection, a checkbox that "confirms" a backup nobody wrote down, the phrase left on the clipboard, and the phrase sitting in the app switcher snapshot. This package is the flow with those faults designed out. What it can check is what happens on screen: a `verified` result means the user picked the right word at every position asked, in the app, with the positions and decoys the package generates (or the challenges your app supplies). It does not prove the phrase was written down or kept safe, and since a wrong answer can be retried without limit, it can also be reached by trying every choice; an app that wants to limit attempts pushes `MnemonicVerifyScreen` itself and acts on `onWrongAnswer`, since the one-call flow does not limit them. It has no native code and depends only on [`bip39_mnemonic`](https://pub.dev/packages/bip39_mnemonic) for word lists and checksums.
 
-![Diagram: authenticate, reveal, verify, plus the import screen](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/mnemonic_backup_flow/doc/how-it-works.svg)
+![Animation, landscape, split in two. On the left, a backup shows twelve example words at once, a checked box ends it, and the copy stays on the clipboard. On the right, mnemonic_backup_flow asks for a PIN, waits for the protected screen, keeps the words covered until Show the words, then asks for one word. The words are an example, not a recovery phrase.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/mnemonic_backup_flow/doc/without-and-with.gif)
 
 ```sh
 flutter pub add mnemonic_backup_flow
@@ -33,11 +33,13 @@ switch (result) {
 }
 ```
 
+![Diagram: authenticate, reveal, verify, plus the import screen](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/mnemonic_backup_flow/doc/how-it-works.svg)
+
 What the flow guarantees:
 
 1. **Nothing is rendered until `authenticate` returns true.** No route is pushed either.
-2. **The words appear only after `screenProtection.protect()` completes**, on the reveal step and on the verify step, whose choices contain a real word. Until then the screen shows a placeholder, so there is no unprotected first frame. While the screen is showing, if `protect()` throws or does not answer within `protectionTimeout` (15 seconds by default; the flow waits once for its route, a screen you push yourself waits on its own), the error is reported through `FlutterError.reportError` and the screen says so; a protect that threw leaves that screen in the failed state. A protect that only timed out and answers later still makes the screen active, and the words appear then: however late your `protect()` answers, a screen given your `ScreenProtection` never shows the words before it has completed. A screen given `ScreenProtection.none()` shows them on its first frame and relies on the protection your app already holds.
-3. **The words are hidden whenever the app is not in the foreground**, on every screen, including the import field, so the app switcher snapshot and a notification pull-down do not carry them.
+2. **The words appear only after `screenProtection.protect()` completes**, on the reveal step and on the verify step, whose choices contain a real word. Until then the screen shows a placeholder, so there is no unprotected first frame. On the reveal step the words stay covered after that, until the user taps Show the words, and the button that leaves the step stays disabled until the words have been on screen. While the screen is showing, if `protect()` throws or does not answer within `protectionTimeout` (15 seconds by default; the flow waits once for its route, a screen you push yourself waits on its own), the error is reported through `FlutterError.reportError` and the screen says so; a protect that threw leaves that screen in the failed state. A protect that only timed out and answers later still makes the screen active: however late your `protect()` answers, a screen given your `ScreenProtection` never shows the words before it has completed. A screen given `ScreenProtection.none()` is active on its first frame and relies on the protection your app already holds. The reveal screen still waits for Show the words. `obscureUntilShown: false` shows the words as soon as the screen is active, which is what 0.2.0 did.
+3. **The words are hidden whenever the app is not in the foreground**, on every screen, including the import field, so the app switcher snapshot and a notification pull-down do not carry them. On the reveal step, coming back covers the words again until the user asks to see them.
 4. **Verification asks for words at distinct random positions**, multiple choice with decoys from the word list, positions chosen with `Random.secure()`.
 5. **`release()` is called when the flow's route goes away**, including when the user backs out at either step, after its `protect()` has settled or `protectionTimeout` later, whichever comes first. A protect that settles within that time is released once; one that completes or throws after the timeout-driven release is released a second time. So a route left early cannot leave the protection switched on, even when the protect's reply is lost, provided `protectionTimeout` is not null: with `null`, the release waits for `protect()` without limit. The reveal and verify steps live in that one route with one hold on your protection, so the plugin is switched on once and is never released between the two steps. A protect that answers after the route has already been released is released once more; see the next section.
 
@@ -95,7 +97,7 @@ MnemonicImportScreen(
 )
 ```
 
-The import screen turns autocorrect and suggestions off, accepts any whitespace between words, ignores letter case, hides the field while the app is not in the foreground, empties the clipboard after a paste, and reports three problems separately: a wrong word count (with the count), a word that is not in the list (with the word), and a checksum mismatch.
+The reveal screen keeps the words covered until the user taps Show the words. `obscureUntilShown: false` shows them as soon as the protection is active. The import screen turns autocorrect and suggestions off, accepts any whitespace between words, ignores letter case, hides the field while the app is not in the foreground, empties the clipboard after a paste, and reports three problems separately: a wrong word count (with the count), a word that is not in the list (with the word), and a checksum mismatch.
 
 ## Text and languages
 
@@ -127,8 +129,8 @@ words.sentence;  // the phrase, one space between words
 
 | Name | Purpose |
 |---|---|
-| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, allowCopy?, protectionTimeout?)` | Authenticate, then reveal and verify in one protected route. Returns `MnemonicBackupResult`. |
-| `MnemonicRevealScreen` | Numbered words behind the screen protection, hidden while not in the foreground, optional copy with timed clearing. |
+| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, allowCopy?, obscureUntilShown?, protectionTimeout?)` | Authenticate, then reveal and verify in one protected route. Returns `MnemonicBackupResult`. |
+| `MnemonicRevealScreen` | Numbered words behind the screen protection, covered until the user asks to see them, hidden while not in the foreground, optional copy with timed clearing. |
 | `MnemonicVerifyScreen` | Distinct-position multiple-choice check behind the screen protection; retry after a wrong answer. |
 | `MnemonicImportScreen` | Typed or pasted phrase, validated, clipboard emptied after paste. |
 | `MnemonicWords` | Generate, parse, hold a phrase; redacted `toString`. |
@@ -141,7 +143,7 @@ words.sentence;  // the phrase, one space between words
 ## What it does not do
 
 - Store or check a PIN, or call biometrics. `authenticate` is yours: the package only refuses to show anything until it says yes.
-- Block screenshots on its own. It calls your `ScreenProtection` at the right moments; the platform work is the plugin's.
+- Block screenshots on its own. It calls your `ScreenProtection` at the right moments; the platform work is the plugin's. The cover keeps the words out of the frame before the user asks, and out of the frame after the app returns. Once the user has asked to see them, a platform that cannot refuse a capture can still record that frame.
 - Derive keys, encrypt, or store the phrase. It hands `MnemonicWords` back and keeps nothing.
 - Lock the user out after wrong answers. `onWrongAnswer` lets the app apply its own policy.
 - Read the words aloud differently for accessibility. Screen readers announce the words like any text, which is what a user who relies on one needs.
