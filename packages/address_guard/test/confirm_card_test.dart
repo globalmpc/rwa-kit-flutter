@@ -224,6 +224,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  List<PoisoningSuspect> plantedPoison() => screenHistory(owner, [
+    HistoryTransfer(from: owner, to: poison, amount: BigInt.zero, token: token),
+  ], known: known);
+
+  testWidgets(
+    'a planted address says so, shows what it imitates, and cannot be confirmed',
+    (tester) async {
+      // Checked after the paid address left the known list: the evidence still comes with it.
+      await pumpCard(
+        tester,
+        check: assessRecipient(
+          poison,
+          known: const [],
+          suspects: plantedPoison(),
+        ),
+      );
+      expect(find.text(strings.titleLookalike), findsOneWidget);
+      expect(find.text(strings.reasonPlantedInHistory), findsOneWidget);
+      expect(find.text(strings.imitatedLabel), findsOneWidget);
+      expect(find.text(strings.highlightHint), findsOneWidget);
+      expect(confirmButton(), findsNothing);
+    },
+  );
+
+  testWidgets('learning that an address was planted clears an override tick', (
+    tester,
+  ) async {
+    final confirmed = <ConfirmedRecipient>[];
+    Widget card(RecipientCheck check) => MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RecipientConfirmCard(
+            check: check,
+            chainId: 56,
+            allowOverride: true,
+            onConfirm: confirmed.add,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(card(assessRecipient(poison, known: known)));
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    expect(enabled(tester), isTrue);
+
+    // Same address, same verdict, same match: only the new finding differs.
+    await tester.pumpWidget(
+      card(assessRecipient(poison, known: known, suspects: plantedPoison())),
+    );
+    expect(enabled(tester), isFalse);
+    expect(confirmed, isEmpty);
+  });
+
+  test('every history sign has its own sentence', () {
+    final sentences = {
+      for (final sign in PoisoningSign.values) strings.sign(sign),
+    };
+    expect(sentences, hasLength(PoisoningSign.values.length));
+    expect(strings.historyWarning, isNotEmpty);
+  });
+
   testWidgets('every text can be replaced', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

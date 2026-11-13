@@ -229,4 +229,218 @@ void main() {
     expect(check.verdict, RecipientVerdict.badChecksum);
     expect(check.knownRecipient?.label, 'Landlord');
   });
+
+  group('suspects from screenHistory', () {
+    // The owner's history holds a zero-value transfer that shows the owner paying `poison`.
+    List<PoisoningSuspect> screened(List<KnownRecipient> against) =>
+        screenHistory(owner, [
+          HistoryTransfer(
+            from: owner,
+            to: poison,
+            amount: BigInt.zero,
+            token: token,
+          ),
+        ], known: against);
+
+    test('a planted address is a look-alike, with what it imitates', () {
+      final check = assessRecipient(
+        poison,
+        known: known,
+        suspects: screened(known),
+      );
+      expect(check.verdict, RecipientVerdict.lookalike);
+      expect(check.reasons, [
+        RecipientReason.noChecksum,
+        RecipientReason.imitatesKnownRecipient,
+        RecipientReason.plantedInHistory,
+      ]);
+      expect(check.lookalikes.single.imitated, paid);
+    });
+
+    test('keeps the evidence when the known list has changed since', () {
+      // Screened while `paid` was known; checked after it was removed, or with a wider window.
+      final suspects = screened(known);
+      for (final check in [
+        assessRecipient(poison, known: const [], suspects: suspects),
+        assessRecipient(
+          poison,
+          known: known,
+          suspects: suspects,
+          prefixLength: 6,
+          suffixLength: 6,
+        ),
+      ]) {
+        expect(check.verdict, RecipientVerdict.lookalike);
+        expect(check.reasons.last, RecipientReason.plantedInHistory);
+        expect(check.lookalikes.single.imitated, paid);
+      }
+    });
+
+    test('a suspect about another address changes nothing', () {
+      final check = assessRecipient(
+        '0x9999999999999999999999999999999999999999',
+        known: known,
+        suspects: screened(known),
+      );
+      expect(check.verdict, RecipientVerdict.firstTime);
+    });
+
+    test('an address the owner really paid still wins', () {
+      final paidPoison = [
+        ...known,
+        KnownRecipient(poison, RecipientProvenance.sentByOwner),
+      ];
+      // Screened before the owner paid it.
+      final check = assessRecipient(
+        poison,
+        known: paidPoison,
+        suspects: screened(known),
+      );
+      expect(check.verdict, RecipientVerdict.known);
+      expect(check.reasons, isNot(contains(RecipientReason.plantedInHistory)));
+    });
+
+    test('outranks an address-book entry, without vouching for it', () {
+      final saved = [
+        ...known,
+        KnownRecipient(
+          poison,
+          RecipientProvenance.confirmedByUser,
+          label: 'Supplier',
+        ),
+      ];
+      expect(
+        assessRecipient(poison, known: saved).verdict,
+        RecipientVerdict.known,
+      );
+      final check = assessRecipient(
+        poison,
+        known: saved,
+        suspects: screened(saved),
+      );
+      expect(check.verdict, RecipientVerdict.lookalike);
+      expect(check.reasons.last, RecipientReason.plantedInHistory);
+      // The saved label must not appear on the warning as if it vouched for the address.
+      expect(check.knownRecipient, isNull);
+      expect(check.lookalikes.single.imitated, paid);
+    });
+
+    test('accepts a suspect built by hand with a checksummed counterparty', () {
+      final suspect = screened(known).single;
+      final copy = PoisoningSuspect(
+        index: suspect.index,
+        transfer: suspect.transfer,
+        counterparty: toChecksumAddress(suspect.counterparty),
+        imitates: suspect.imitates,
+        signs: suspect.signs,
+      );
+      final check = assessRecipient(poison, known: const [], suspects: [copy]);
+      expect(check.verdict, RecipientVerdict.lookalike);
+    });
+
+    test('a planted match is not repeated as a batch row', () {
+      final check = assessRecipient(
+        poison,
+        known: const [],
+        batch: [paid],
+        suspects: screened(known),
+      );
+      expect(check.lookalikes.map((match) => match.source), [
+        MatchSource.knownRecipient,
+      ]);
+      expect(
+        check.reasons,
+        isNot(contains(RecipientReason.imitatesBatchEntry)),
+      );
+    });
+
+    test('known and planted matches are sorted together, closest first', () {
+      // `poison` copies `paid` on four and four. Screened when only `closer` was known, the
+      // planted evidence (six and six) must come before the weaker known match.
+      const closer = '0xa1b2ff1111111111111111111111111111ff5678';
+      final suspects = screenHistory(
+        owner,
+        [
+          HistoryTransfer(
+            from: owner,
+            to: poison,
+            amount: BigInt.zero,
+            token: token,
+          ),
+        ],
+        known: [KnownRecipient(closer, RecipientProvenance.sentByOwner)],
+      );
+      final check = assessRecipient(poison, known: known, suspects: suspects);
+      expect(check.lookalikes.map((match) => match.imitated), [closer, paid]);
+    });
+
+    test('a suspect with nothing to show is ignored, not half-trusted', () {
+      final suspect = screened(known).single;
+      PoisoningSuspect bare(List<LookalikeMatch> imitates) => PoisoningSuspect(
+        index: 0,
+        transfer: suspect.transfer,
+        counterparty: suspect.counterparty,
+        imitates: imitates,
+        signs: const [],
+      );
+      final selfMatch = LookalikeMatch(
+        imitated: poison,
+        source: MatchSource.knownRecipient,
+        prefix: 'a1b2',
+        suffix: '5678',
+        candidateMiddle: '',
+        imitatedMiddle: '',
+      );
+      final batchMatch = LookalikeMatch(
+        imitated: paid,
+        source: MatchSource.sameBatch,
+        prefix: 'a1b2',
+        suffix: '5678',
+        candidateMiddle: '',
+        imitatedMiddle: '',
+      );
+      for (final imitates in [
+        const <LookalikeMatch>[],
+        [selfMatch],
+        [batchMatch],
+      ]) {
+        final check = assessRecipient(
+          poison,
+          known: const [],
+          suspects: [bare(imitates)],
+        );
+        expect(check.verdict, RecipientVerdict.firstTime);
+      }
+    });
+
+    test('a stale suspect never hides a batch match of a paid address', () {
+      // A suspect says `paid` imitated `poison`; `paid` is now really paid, and `poison` is a row.
+      final stale = PoisoningSuspect(
+        index: 0,
+        transfer: HistoryTransfer(from: paid, to: owner, amount: BigInt.zero),
+        counterparty: paid,
+        imitates: findLookalikes(paid, [poison]),
+        signs: const [],
+      );
+      final check = assessRecipient(
+        paid,
+        known: known,
+        batch: [poison],
+        suspects: [stale],
+      );
+      expect(check.verdict, RecipientVerdict.known);
+      expect(check.lookalikes.single.source, MatchSource.sameBatch);
+    });
+
+    test('outranks a checksum complaint', () {
+      final altered = flipFirstLetter(toChecksumAddress(poison));
+      expect(checksumState(altered), ChecksumState.mismatch);
+      final check = assessRecipient(
+        altered,
+        known: const [],
+        suspects: screened(known),
+      );
+      expect(check.verdict, RecipientVerdict.lookalike);
+    });
+  });
 }

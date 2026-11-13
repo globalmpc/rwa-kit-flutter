@@ -69,6 +69,8 @@ void main() {
     (tester) async {
       await tester.pumpWidget(const AddressGuardExample());
       for (var round = 0; round < 2; round++) {
+        await tester.ensureVisible(find.text('Supplier you paid'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Supplier you paid'));
         await tester.pumpAndSettle();
         final confirm = find.widgetWithText(FilledButton, strings.confirm);
@@ -78,6 +80,36 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.textContaining('Ready to sign: 0x'), findsOneWidget);
       }
+    },
+  );
+
+  testWidgets('the planted entries are flagged in the activity list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const AddressGuardExample());
+    expect(find.textContaining(strings.historyWarning), findsNWidgets(2));
+    expect(find.textContaining(strings.signZeroValue), findsOneWidget);
+    expect(find.textContaining(strings.signUnlistedToken), findsOneWidget);
+    expect(find.textContaining(strings.signNamesOwnerAsSender), findsOneWidget);
+  });
+
+  testWidgets(
+    'a planted entry cannot be used, and is stopped at the card anyway',
+    (tester) async {
+      await tester.pumpWidget(const AddressGuardExample());
+      // The flagged entries cannot be copied from the history at all.
+      final uses = find.widgetWithText(TextButton, 'Use');
+      expect(tester.widget<TextButton>(uses.at(0)).onPressed, isNotNull);
+      expect(tester.widget<TextButton>(uses.at(1)).onPressed, isNull);
+      expect(tester.widget<TextButton>(uses.at(2)).onPressed, isNull);
+
+      // Pasted from elsewhere anyway, the card stops it and says it was planted.
+      await tester.tap(find.text('Look-alike from history'));
+      await tester.pumpAndSettle();
+      expect(find.text(strings.titleLookalike), findsOneWidget);
+      await tester.ensureVisible(find.text(strings.reasonPlantedInHistory));
+      expect(find.text(strings.reasonPlantedInHistory), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, strings.confirm), findsNothing);
     },
   );
 }

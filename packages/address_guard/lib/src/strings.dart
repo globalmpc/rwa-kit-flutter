@@ -1,6 +1,8 @@
 import 'assess.dart';
+import 'history.dart';
 
-/// Every user-facing text in [RecipientConfirmCard], with English defaults.
+/// Every user-facing text in [RecipientConfirmCard] and for [screenHistory] results, with English
+/// defaults.
 ///
 /// Replace any of them to translate or reword. Texts that carry a value are functions.
 class AddressGuardStrings {
@@ -45,6 +47,18 @@ class AddressGuardStrings {
     this.reasonImitatesBatchEntry =
         'Its first and last characters match another address in the same list, but the middle '
         'is different.',
+    this.reasonPlantedInHistory =
+        'It appears in your history as a look-alike of an address you have paid or saved. That '
+        'is how address poisoning starts: the attacker puts it there and waits for you to copy '
+        'it.',
+    this.historyWarning =
+        'Suspected address poisoning. Do not copy this address.',
+    this.signZeroValue = 'A transfer of zero.',
+    this.signDust = 'An amount too small to be a real payment.',
+    this.signUnlistedToken =
+        'A token your wallet does not list. Fake tokens copy the name of a real one.',
+    this.signNamesOwnerAsSender =
+        'It shows you as the sender of a payment to this look-alike.',
     this.reasonNothingToCompare =
         'There are no earlier payments to compare it with.',
     this.reasonUnlikeKnownRecipients =
@@ -78,6 +92,14 @@ class AddressGuardStrings {
   final String reasonOthersShareEnds;
   final String reasonImitatesKnownRecipient;
   final String reasonImitatesBatchEntry;
+  final String reasonPlantedInHistory;
+
+  /// The label for a history entry that [screenHistory] flagged.
+  final String historyWarning;
+  final String signZeroValue;
+  final String signDust;
+  final String signUnlistedToken;
+  final String signNamesOwnerAsSender;
   final String reasonNothingToCompare;
   final String reasonUnlikeKnownRecipients;
 
@@ -123,8 +145,17 @@ class AddressGuardStrings {
     RecipientReason.othersShareEnds => reasonOthersShareEnds,
     RecipientReason.imitatesKnownRecipient => reasonImitatesKnownRecipient,
     RecipientReason.imitatesBatchEntry => reasonImitatesBatchEntry,
+    RecipientReason.plantedInHistory => reasonPlantedInHistory,
     RecipientReason.nothingToCompare => reasonNothingToCompare,
     RecipientReason.unlikeKnownRecipients => reasonUnlikeKnownRecipients,
+  };
+
+  /// The sentence for [sign], to show under [historyWarning].
+  String sign(PoisoningSign sign) => switch (sign) {
+    PoisoningSign.zeroValue => signZeroValue,
+    PoisoningSign.dust => signDust,
+    PoisoningSign.unlistedToken => signUnlistedToken,
+    PoisoningSign.namesOwnerAsSender => signNamesOwnerAsSender,
   };
 }
 

@@ -1,6 +1,6 @@
 name: address_guard
-description: Catch address-poisoning look-alikes before a Flutter wallet sends. Compares a recipient with addresses the user really paid, checks EIP-55, shows a confirm card.
-version: 0.1.0
+description: Catch address-poisoning look-alikes before a Flutter wallet sends. Flags planted transfers in history, compares a recipient with addresses really paid, checks EIP-55.
+version: 0.2.0
 repository: https://github.com/globalmpc/rwa-kit-flutter
 issue_tracker: https://github.com/globalmpc/rwa-kit-flutter/issues
 topics:
