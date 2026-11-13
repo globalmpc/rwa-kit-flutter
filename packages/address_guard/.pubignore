@@ -5,3 +5,4 @@ analysis_options.yaml
 # The figures in doc/ are shown in the README from the repository; leaving them out keeps the
 # download small.
 /doc/*.webp
+/doc/*.gif

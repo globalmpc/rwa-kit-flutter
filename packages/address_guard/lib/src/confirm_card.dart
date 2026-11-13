@@ -9,7 +9,7 @@ import 'strings.dart';
 /// A card that shows a recipient the way it must be checked, and asks the user to confirm it.
 ///
 /// - The full address, never shortened, in groups of four characters. The characters between the
-///   compared start and end are set in bold, because that is where a look-alike differs.
+///   shared start and end are set in bold, because that is where a look-alike differs.
 /// - For a look-alike, the addresses it imitates underneath (up to three, the rest counted). Each
 ///   has the characters that differ from the candidate highlighted, and the candidate is
 ///   highlighted against the first.
@@ -25,10 +25,10 @@ import 'strings.dart';
 /// [onConfirm] receives a [ConfirmedRecipient] bound to the address and chain that were shown,
 /// and is called at most once until the check, the chain or [allowOverride] changes. Any of those
 /// changes also clears the tick: the check counts as changed when its address or casing, its
-/// verdict, or the addresses it imitates differ, so a recipient swapped while the card is open is
-/// never confirmed by an earlier tick. To ask again for the same address, give the card a new
-/// [Key]. Check the confirmation against the transaction with [ConfirmedRecipient.matches] just
-/// before signing.
+/// verdict, its reasons, or the addresses it imitates differ, so a recipient swapped while the
+/// card is open is never confirmed by an earlier tick. To ask again for the same address, give the
+/// card a new [Key]. Check the confirmation against the transaction with
+/// [ConfirmedRecipient.matches] just before signing.
 class RecipientConfirmCard extends StatefulWidget {
   const RecipientConfirmCard({
     super.key,
@@ -72,6 +72,7 @@ const int _shownMatches = 3;
 String _shown(RecipientCheck check) => [
   check.candidate,
   check.verdict.name,
+  for (final reason in check.reasons) reason.name,
   for (final match in check.lookalikes)
     '${match.imitated}:${match.source.name}',
 ].join('|');
@@ -188,8 +189,13 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                 else
                   AddressText(
                     address: check.candidate,
-                    prefixLength: check.prefixLength,
-                    suffixLength: check.suffixLength,
+                    // The part a look-alike changed, where there is one; otherwise the window.
+                    prefixLength: imitated.isEmpty
+                        ? check.prefixLength
+                        : _sharedHead(check.candidate, imitated.first.imitated),
+                    suffixLength: imitated.isEmpty
+                        ? check.suffixLength
+                        : _sharedTail(check.candidate, imitated.first.imitated),
                     compareWith: imitated.isEmpty
                         ? null
                         : imitated.first.imitated,
@@ -207,8 +213,8 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                   const SizedBox(height: 8),
                   AddressText(
                     address: match.imitated,
-                    prefixLength: check.prefixLength,
-                    suffixLength: check.suffixLength,
+                    prefixLength: _sharedHead(check.candidate, match.imitated),
+                    suffixLength: _sharedTail(check.candidate, match.imitated),
                     compareWith: check.candidate,
                     strings: strings,
                   ),
@@ -364,6 +370,14 @@ class AddressText extends StatelessWidget {
     );
   }
 }
+
+// Counted from the addresses rather than read from a match, so the bold part is right whatever
+// built the match.
+int _sharedHead(String a, String b) =>
+    sharedHead(addressBody(a), addressBody(b));
+
+int _sharedTail(String a, String b) =>
+    sharedTail(addressBody(a), addressBody(b));
 
 TextStyle _monospace(ThemeData theme) =>
     (theme.textTheme.bodyLarge ?? const TextStyle()).copyWith(

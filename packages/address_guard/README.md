@@ -2,9 +2,9 @@
 
 Catch address-poisoning look-alikes before a Flutter wallet sends.
 
-`address_guard` compares the address a user is about to pay with the addresses that user has really paid before, checks its EIP-55 checksum, and shows it on a confirm card that makes the difference visible. It is pure Dart plus one Flutter widget: no native code, no network calls, no keys and no storage.
+`address_guard` marks the fake transfers an attacker plants in a wallet's history, compares the address a user is about to pay with the addresses that user has really paid before, checks its EIP-55 checksum, and shows it on a confirm card that makes the difference visible. It is pure Dart plus one Flutter widget: no native code, no network calls, no keys and no storage.
 
-![A known recipient and the address about to be paid, side by side. The first and last four characters match, 30 of the 32 middle characters differ, and address_guard returns the verdict lookalike.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/hero.webp)
+![Animation, landscape, split in two. On the left, without the package: a wallet history shows a payment to 0xa1b2…5678 and a planted zero-value transfer to a look-alike that reads the same when shortened; the user copies the look-alike and the payment is sent to the attacker, which cannot be reversed. On the right, with address_guard: the same history marks the planted entry as suspected poisoning, and when the look-alike is pasted anyway the confirm card shows all 40 characters with the differing middle highlighted and offers no confirm button. Every address is synthetic.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/without-and-with.gif)
 
 ```sh
 flutter pub add address_guard
@@ -19,7 +19,9 @@ An EVM address is 40 hexadecimal characters. Nobody reads 40 characters, so wall
 3. **They put it in your history.** They send you a tiny amount, a worthless token, or a zero-value transfer from the look-alike. A zero-value one does not even need their own funds: on most tokens, calling `transferFrom(you, lookalike, 0)` succeeds without your approval and emits a `Transfer` event that names *you* as the sender, because ERC-20 requires the event even for a zero amount and an allowance of zero covers a transfer of zero. Explorers and wallets then show it as if you had sent money to the look-alike.
 4. **You copy the wrong one.** Next time you pay, you copy the recipient from your history. Shortened, the real address and the look-alike are identical. The payment goes to the attacker, and a blockchain transfer cannot be reversed.
 
-This is not a rare edge case. A study published at USENIX Security 2025 measured address poisoning on Ethereum and BNB Smart Chain between 1 July 2022 and 30 June 2024: more than 270 million attack attempts, aimed at 17 million victims, and 6,633 successful transfers to attackers worth at least USD 83.8 million ([Tsuchiya et al., "Blockchain Address Poisoning"](https://www.usenix.org/system/files/usenixsecurity25-tsuchiya.pdf)).
+This is not a rare edge case. A study published at USENIX Security 2025 measured address poisoning on Ethereum and BNB Smart Chain between 1 July 2022 and 30 June 2024: more than 270 million attack attempts, aimed at 17 million victims, and 6,633 successful transfers to attackers worth at least USD 83.8 million ([Tsuchiya et al., "Blockchain Address Poisoning"](https://www.usenix.org/system/files/usenixsecurity25-tsuchiya.pdf)). Of the planted transfers, 55% were zero-value, 44% used a counterfeit token, and 1.5% were tiny real amounts. The look-alikes it found share at least three characters at the start and four at the end, and the best-funded attackers matched up to 20.
+
+A 2025 study of 53 Ethereum wallets found that only 11 showed any warning or confirmation step before a send, mostly for any unfamiliar address rather than for a look-alike, and that only one labelled planted transfers as scams ([Guan and Li](https://arxiv.org/abs/2508.12107)). Both papers recommend the same two things: mark the planted transfers in the history, and stop the send to a look-alike. This package does both.
 
 Two things make it hard to catch by hand: the look-alike really is in the user's history, and the part that differs is the part every interface hides.
 
@@ -27,13 +29,16 @@ Two things make it hard to catch by hand: the look-alike really is in the user's
 
 ## What this package does
 
+- **Marks the planted transfers.** `screenHistory` finds the entries of the activity list whose counterparty imitates someone the user has paid or saved: the zero-value, counterfeit-token and dust transfers of step 3. The wallet can hide them or label them before the user copies from there.
 - **Knows who the user has really paid.** It reads the transactions the user's own account signed and keeps only the recipients those signatures named. The planted transfer of step 3 never counts, because the user did not sign it.
-- **Flags a look-alike.** A recipient with the same first and last characters as a known recipient, but a different middle, is a `lookalike`: the pattern of the attack, and a reason to stop.
+- **Flags a look-alike.** A recipient with the same first and last characters as a known recipient (at least three and four), but a different middle, is a `lookalike`: the pattern of the attack, and a reason to stop. So is any address `screenHistory` caught planting a transfer.
 - **Checks the checksum.** A mixed-case address carries an EIP-55 checksum; casing that contradicts it means a character was changed. All lower case or all capitals carries none, and is fine.
 - **Shows the whole address.** `RecipientConfirmCard` prints all 40 characters in groups of four, sets the middle in bold, highlights every character that differs from the imitated address, and will not confirm a look-alike.
 - **Binds the confirmation.** What the user confirmed is one exact address on one exact chain, checked again just before signing.
 
-![Animation: assessRecipient compares the address about to be paid with a known recipient, character by character. The first four and last four match, the middle differs, and the verdict is lookalike.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/check.webp)
+![Animated walkthrough: eight steps showing a look-alike planted in the history, marking the planted entries, who counts as known, the minimum of three and four shared characters, the verdicts in order, the confirm card showing what the shortening hid, binding the confirmation, and what the verdict does not say.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/how-it-works.gif)
+
+![Animation: assessRecipient compares the address about to be paid with a known recipient, character by character. In this example the first four and last four match, more than the minimum of three and four, the middle differs, and the verdict is lookalike.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/check.webp)
 
 ## Check a recipient
 
@@ -48,11 +53,14 @@ final known = [
     KnownRecipient(entry.address, RecipientProvenance.confirmedByUser, label: entry.name),
 ];
 
-// 2. Judge the address the user entered or pasted.
-final check = assessRecipient(input.trim(), known: known);
+// 2. Mark the planted entries in the activity list.
+final suspects = screenHistory(account, activity, known: known, listedTokens: myTokens);
+
+// 3. Judge the address the user entered or pasted.
+final check = assessRecipient(input.trim(), known: known, suspects: suspects);
 check.verdict; // known, firstTime, lookalike, invalid or badChecksum
 
-// 3. Show it, and let the user confirm.
+// 4. Show it, and let the user confirm.
 RecipientConfirmCard(
   check: check,
   chainId: 56,
@@ -61,7 +69,7 @@ RecipientConfirmCard(
   onCancel: () => Navigator.pop(context),
 );
 
-// 4. Just before signing, make sure the payment still goes where the user confirmed. For a
+// 5. Just before signing, make sure the payment still goes where the user confirmed. For a
 //    token payment the recipient is inside the calldata; `to` is the token contract.
 final recipient = isTokenPayment
     ? decodeErc20Transfer(calldata)?.recipient
@@ -99,6 +107,37 @@ The cost is that recipients paid through those routes stay first-time recipients
 
 `recipientNamedBy(transaction, owner: ...)` applies the same rule to one record, for an app that wants to explain a single entry, and `decodeErc20Transfer(calldata)` is the strict decoder it uses.
 
+## Screen the activity list
+
+The poisoning only works if the user copies the look-alike from the history, so the history is the first place to warn. `screenHistory(owner, activity, known: known)` takes the transfers the wallet shows, as `HistoryTransfer` (`from`, `to`, `amount`, and `token`, or null for the native coin), and returns a `PoisoningSuspect` for each entry whose counterparty imitates a known recipient:
+
+```dart
+final suspects = screenHistory(
+  account,
+  activity,
+  known: known,
+  listedTokens: myTokens,                       // the real token contracts the wallet shows
+  isDust: (transfer) => usdValue(transfer) < 1, // optional: what is too small to be a payment
+);
+for (final suspect in suspects) {
+  suspect.index;        // which entry of `activity`
+  suspect.counterparty; // the look-alike
+  suspect.imitates;     // the known recipients it copies, closest first
+  suspect.signs;        // zeroValue, dust, unlistedToken, namesOwnerAsSender
+}
+```
+
+| Sign | Meaning |
+|---|---|
+| `zeroValue` | An amount of zero. A zero-value `transferFrom` needs no approval, so anyone can make a log that shows the owner paying the look-alike. |
+| `dust` | An amount the app's `isDust` judged too small to be a real payment. |
+| `unlistedToken` | A token contract missing from `listedTokens`. A counterfeit can copy USDT's name and symbol, never its contract address. |
+| `namesOwnerAsSender` | A token record shows the owner paying the look-alike. A forged log reads exactly like this. Never set for the native coin, whose sender cannot be forged. |
+
+A look-alike is a suspect on its own; the signs explain it. `AddressGuardStrings.historyWarning` and `strings.sign(sign)` give the text for the entry.
+
+This is the data the trust rule refuses: token logs and incoming transfers that anyone can forge. It is safe here because it can only raise an alarm. Nothing `screenHistory` reads makes an address known, and an entry whose counterparty the owner has really paid is never flagged. A counterparty that is only in the address book is still flagged, because copying the look-alike from the history into the address book is how the attack succeeds. Two saved addresses that resemble each other therefore flag each other: nothing says which one is real, and a false alarm is the safe mistake. Pass the transfers and the known recipients of one account on one chain. Pass the result to `assessRecipient` as `suspects`, and an address copied from such an entry is a `lookalike` with the reason `plantedInHistory`, shown on the card next to the address it imitates. That holds even if it was saved since, and even if the user's known recipients have changed since the history was screened.
+
 ## The verdicts
 
 `assessRecipient` runs the checks in order of how much each should stop a payment, and the first that decides wins:
@@ -106,8 +145,8 @@ The cost is that recipients paid through those routes stay first-time recipients
 | Verdict | When | Card |
 |---|---|---|
 | `invalid` | Not `0x` followed by 40 hex characters. Surrounding whitespace counts as invalid: trim first, so nothing the user cannot see is accepted. | Shown as typed, no confirm button |
-| `known` | An exact known recipient, in any valid casing. Titled "paid before" for a recipient from the user's own sends, "in your address book" for one only saved. | Confirm at once |
-| `lookalike` | Same first and last characters as a known recipient (or another entry of the batch), different middle | Not confirmable; the imitated addresses are shown with the differences highlighted |
+| `known` | An exact known recipient, in any valid casing. Titled "paid before" for a recipient from the user's own sends, "in your address book" for one only saved. A saved address that `screenHistory` flagged is a `lookalike` instead. | Confirm at once |
+| `lookalike` | At least three first and four last characters in common with a known recipient (or another entry of the batch), different middle; or flagged in `suspects` | Not confirmable; the imitated addresses are shown with the differences highlighted |
 | `badChecksum` | Mixed case that contradicts the EIP-55 checksum, including a known address whose casing was edited. All lower case and all capitals carry no checksum: they get a "no checksum to verify" note, never this verdict. | Not confirmable |
 | `firstTime` | Anything else | Confirm after the user ticks that they checked the full address |
 
@@ -115,7 +154,7 @@ Two orderings are deliberate. An exact known match outranks resemblance, because
 
 An address that is both paid and in the address book is reported with the address-book entry, so its label shows on the card, also when its casing was edited. There is no `safe` verdict. `check.reasons` lists every finding in order, as `RecipientReason` values with English sentences in `AddressGuardStrings`, and `check.lookalikes` names each imitated address with the shared and differing parts.
 
-The comparison window is four characters at each end by default, the length most wallets show and attackers match. Pass `prefixLength` and `suffixLength` to compare more; a window that leaves no middle is refused with an `ArgumentError`.
+The comparison window is a minimum: at least three characters at the start and four at the end by default, where the measured attacks begin. A look-alike that copies more, six and six for example, is found too, and `LookalikeMatch.prefix` and `suffix` hold everything it shares, closest copy first. If your wallet shortens addresses to fewer characters, for example two at the start, pass that as `prefixLength`, since that is what an attacker needs to match for your users. A window that leaves no middle is refused with an `ArgumentError`.
 
 ## The confirm card
 
@@ -145,7 +184,7 @@ final checks = [
 ];
 ```
 
-A row that resembles another row is flagged as a `lookalike` with `MatchSource.sameBatch`, but a batch match never makes an address known: only the user's own history does. Rows that are not addresses are skipped as batch entries, so one typo does not stop the other rows from being checked; that row's own check reports it as `invalid`. Each check compares the row with every other row, which is quick for the lists a person reviews by hand.
+A row that resembles another row is flagged as a `lookalike` with `MatchSource.sameBatch`, but a batch match never makes an address known: only the user's own history does. Rows that are not addresses are skipped as batch entries, so one typo does not stop the other rows from being checked; that row's own check reports it as `invalid`. Each check compares the row with every other row, which is quick for the lists a person reviews by hand. With the default window of three and four, two unrelated addresses match by chance about once in 270 million pairs; a 1,000-row list has about 500,000 pairs, so roughly one list in 500 stops on a chance match. For long machine-made lists, pass `prefixLength: 4` to make that sixteen times rarer.
 
 ## Text and languages
 
@@ -165,23 +204,26 @@ final strings = AddressGuardStrings(
 
 | Name | Purpose |
 |---|---|
+| `screenHistory(owner, activity, known:, listedTokens?, isDust?, prefixLength?, suffixLength?)` | The activity entries that look like poisoning, as `PoisoningSuspect` with their `PoisoningSign`s. |
+| `HistoryTransfer` | One activity entry: `from`, `to`, `amount`, `token` (null for the native coin). |
 | `deriveKnownRecipients(owner, transactions, minNativeValue?, minTokenAmount?)` | The recipients the owner's own signatures named, deduplicated, first seen first. |
 | `SentTransaction` | One transaction the account sent: `from`, `to`, `value`, `input`, `succeeded`. |
 | `KnownRecipient(address, provenance, label?)` | A recipient with `RecipientProvenance.sentByOwner` or `confirmedByUser`. |
-| `assessRecipient(candidate, known:, batch?, prefixLength?, suffixLength?)` | The verdict, reasons and look-alike evidence for one address. Returns `RecipientCheck`. |
+| `assessRecipient(candidate, known:, batch?, suspects?, prefixLength?, suffixLength?)` | The verdict, reasons and look-alike evidence for one address. Returns `RecipientCheck`. |
 | `RecipientConfirmCard` | The confirm card. Returns a `ConfirmedRecipient` through `onConfirm`. |
 | `ConfirmedRecipient.matches(address, chainId)` | Whether a transaction is the one the user confirmed. |
 | `AddressText` | The full address in groups, with optional difference highlighting. |
-| `findLookalikes(candidate, others, prefixLength?, suffixLength?, source?)` | The look-alike matcher on its own. |
+| `findLookalikes(candidate, others, prefixLength?, suffixLength?, source?)` | The look-alike matcher on its own, closest copy first. |
 | `recipientNamedBy`, `decodeErc20Transfer` | The trust rule for one record, and its strict `transfer(address,uint256)` decoder. |
 | `toChecksumAddress`, `checksumState`, `isValidChecksum`, `isEvmAddress`, `normalizeAddress` | EIP-55 and address helpers. `checksumState` separates `checksummed`, `unchecksummed` (one case throughout, nothing to verify) and `mismatch`. |
-| `AddressGuardStrings` | All user-facing text. |
+| `AddressGuardStrings` | All user-facing text, for the card and for flagged history entries. |
 
 ## What it does not do
 
 - **Prove an address is safe.** A known recipient is one the user chose before, not a guarantee about who controls it now. A first-time recipient is not suspicious, only unverified.
-- **Catch every substitution.** It catches an address that copies the ends of one the user has paid. An attacker who replaces the whole address, for example clipboard malware, produces a first-time recipient: the card then asks the user to check the full address, but it cannot know it is wrong.
-- **Read the chain.** It judges the records the app supplies. A wallet that keeps no history of its own sends can still use the address book and the checksum check.
+- **Catch every substitution.** It catches an address that copies the ends of one the user has paid, and one caught planting a transfer. An attacker who replaces the whole address, for example clipboard malware, produces a first-time recipient: the card then asks the user to check the full address, but it cannot know it is wrong.
+- **Read the chain, or know token prices.** It judges the records the app supplies. Whether a token is real (`listedTokens`) and what amount is dust (`isDust`) are the app's to say. A wallet that keeps no history of its own sends can still use the address book and the checksum check.
+- **Undo a past mistake.** Once the user has really paid a look-alike, it is a known recipient like any other, and its history entries are no longer flagged. The other known recipient it copies still shows `othersShareEnds` when it is checked.
 - **Stop a determined user.** With `allowOverride`, the user can confirm after an explicit tick; without it, the app decides what happens next.
 - **Store anything, call the network, or hold keys.**
 
@@ -196,7 +238,7 @@ flutter test
 flutter pub publish --dry-run
 ```
 
-Tests cover the EIP-55 specification vectors, the look-alike matcher with property tests (changing any middle character always flags, changing an end never does), the trust rule against forged, reverted, zero-value and contract-call records, the verdict order, and the card: each verdict, a double tap, a recipient swapped while the card is open, screen-reader labels and double text size on a narrow screen. Every address in the tests is synthetic. The example app shows the whole flow with a planted look-alike; `cd example && flutter test` drives it end to end.
+Tests cover the EIP-55 specification vectors, the look-alike matcher with property tests (changing any middle character always flags, changing one of the first three or last four never does), the history screen against each kind of planted transfer and the entries it must never flag, the trust rule against forged, reverted, zero-value and contract-call records, the verdict order, and the card: each verdict, a double tap, a recipient swapped while the card is open, screen-reader labels and double text size on a narrow screen. Every address in the tests is synthetic. The example app shows the whole flow with a planted look-alike; `cd example && flutter test` drives it end to end.
 
 ## License
 

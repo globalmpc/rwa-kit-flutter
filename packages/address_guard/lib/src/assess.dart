@@ -1,4 +1,5 @@
 import 'address.dart';
+import 'history.dart';
 import 'known_recipients.dart';
 import 'lookalike.dart';
 
@@ -13,8 +14,8 @@ enum RecipientVerdict {
   firstTime,
 
   /// Shares the first and last characters of an address the user has paid or saved (or of
-  /// another batch entry), but differs in the middle. The pattern of an address-poisoning attack.
-  /// Do not send.
+  /// another batch entry), but differs in the middle, or sent a poisoning transfer into the user's
+  /// history. The pattern of an address-poisoning attack. Do not send.
   lookalike,
 
   /// Not a 20-byte EVM address.
@@ -58,6 +59,11 @@ enum RecipientReason {
 
   /// Unlike every known recipient in both ends and the middle.
   unlikeKnownRecipients,
+
+  /// Sent a transfer into the user's history that [screenHistory] flagged as poisoning: the
+  /// address is in the history because an attacker put it there. Added in 0.2.0, last, so the
+  /// index of every earlier value is unchanged.
+  plantedInHistory,
 }
 
 /// The result of [assessRecipient].
@@ -90,15 +96,20 @@ class RecipientCheck {
 
   /// The matching known recipient: set when [verdict] is [RecipientVerdict.known], and when it is
   /// [RecipientVerdict.badChecksum] for a known address whose casing was edited, so the user still
-  /// sees whose address it is.
+  /// sees whose address it is. Never set for [RecipientVerdict.lookalike], even for a saved
+  /// address that planted a transfer: its label must not vouch for it on the warning.
   final KnownRecipient? knownRecipient;
 
-  /// Every address the candidate resembles, from the known recipients and the batch. Not empty
-  /// when [verdict] is [RecipientVerdict.lookalike]. For other verdicts it can still hold matches,
-  /// which do not change the verdict: a known address can share its ends with others.
+  /// Every address the candidate resembles: matches with the known recipients first (including
+  /// those [screenHistory] recorded for a planted address), then with the batch, each group
+  /// closest copy first, because a recipient the user really chose matters more than a list row.
+  /// Not empty when [verdict] is [RecipientVerdict.lookalike] (for suspects that come from
+  /// [screenHistory], which always name what they imitate). For other verdicts it can still
+  /// hold matches, which do not change the verdict: a known address can share its ends with
+  /// others.
   final List<LookalikeMatch> lookalikes;
 
-  /// The comparison window used.
+  /// The comparison window used: the fewest characters a look-alike must share at each end.
   final int prefixLength;
   final int suffixLength;
 
@@ -118,16 +129,24 @@ class RecipientCheck {
 /// malformed row must not stop the others from being checked. Assess that row on its own to
 /// report it as [RecipientVerdict.invalid].
 ///
+/// [suspects] are what [screenHistory] flagged in the user's history. A candidate that is the
+/// counterparty of one is a look-alike, shown with the addresses the suspect imitates, even when
+/// it does not match the window here (for example when the history was screened against an older
+/// list of known recipients) and even when it is in the address book: saving the look-alike
+/// copied from the history is how the attack succeeds. Only a recipient the owner has really paid
+/// outranks it. Pass suspects screened for the same account and chain as [known].
+///
 /// The checks run in order of how much they should stop a payment, and the first that decides
 /// wins:
 ///
 /// 1. Not an address: [RecipientVerdict.invalid].
-/// 2. An exact known recipient, unless its casing contradicts the checksum:
-///    [RecipientVerdict.known]. An exact match outranks resemblance, because flagging a recipient
-///    the user really pays teaches people to ignore the warning.
-/// 3. Imitates a known recipient or a batch entry: [RecipientVerdict.lookalike]. This outranks a
-///    checksum complaint, because both mean "do not send" and the casing would hide the
-///    dangerous half.
+/// 2. An exact known recipient, unless its casing contradicts the checksum, or it is only saved
+///    and was flagged in [suspects]: [RecipientVerdict.known]. An exact match outranks
+///    resemblance, because flagging a recipient the user really pays teaches people to ignore the
+///    warning.
+/// 3. Imitates a known recipient or a batch entry, or was flagged in [suspects]:
+///    [RecipientVerdict.lookalike]. This outranks a checksum complaint, because both mean "do not
+///    send" and the casing would hide the dangerous half.
 /// 4. Casing contradicts the checksum: [RecipientVerdict.badChecksum].
 /// 5. Otherwise: [RecipientVerdict.firstTime].
 ///
@@ -136,6 +155,7 @@ RecipientCheck assessRecipient(
   String candidate, {
   required Iterable<KnownRecipient> known,
   Iterable<String> batch = const [],
+  Iterable<PoisoningSuspect> suspects = const [],
   int prefixLength = defaultPrefixLength,
   int suffixLength = defaultSuffixLength,
 }) {
@@ -161,25 +181,32 @@ RecipientCheck assessRecipient(
 
   final knownList = known.toList(growable: false);
   final knownAddresses = {for (final entry in knownList) entry.address};
-  final lookalikes = [
-    ...findLookalikes(
-      normalized,
-      knownList.map((entry) => entry.address),
-      prefixLength: prefixLength,
-      suffixLength: suffixLength,
-    ),
-    ...findLookalikes(
-      normalized,
-      // A batch row that is also a known recipient is already compared above; reporting it
-      // twice would show the same address under two different labels.
-      batch
-          .where(isEvmAddress)
-          .where((entry) => !knownAddresses.contains(normalizeAddress(entry))),
-      prefixLength: prefixLength,
-      suffixLength: suffixLength,
-      source: MatchSource.sameBatch,
-    ),
+  final knownMatches = findLookalikes(
+    normalized,
+    knownList.map((entry) => entry.address),
+    prefixLength: prefixLength,
+    suffixLength: suffixLength,
+  );
+  final evidence = _plantedEvidence(suspects, normalized);
+  final planted = evidence.isNotEmpty;
+  // Each imitated address once, in the known group, since it was a known recipient when the
+  // history was screened.
+  final imitated = {for (final match in knownMatches) match.imitated};
+  final plantedMatches = [
+    for (final match in evidence)
+      if (imitated.add(normalizeAddress(match.imitated))) match,
   ];
+  final batchMatches = findLookalikes(
+    normalized,
+    // A batch row that is also a known recipient is already compared above; reporting it
+    // twice would show the same address under two different labels.
+    batch
+        .where(isEvmAddress)
+        .where((entry) => !knownAddresses.contains(normalizeAddress(entry))),
+    prefixLength: prefixLength,
+    suffixLength: suffixLength,
+    source: MatchSource.sameBatch,
+  );
   // An address can be both paid and saved; prefer the entry that carries the user's own label.
   final matches = knownList.where((entry) => entry.address == normalized);
   final match = matches
@@ -189,6 +216,8 @@ RecipientCheck assessRecipient(
   RecipientCheck result(
     RecipientVerdict verdict, {
     KnownRecipient? knownRecipient,
+    List<LookalikeMatch> extra = const [],
+    List<LookalikeMatch>? batchShown,
   }) => RecipientCheck(
     candidate: candidate,
     normalized: normalized,
@@ -196,37 +225,56 @@ RecipientCheck assessRecipient(
     checksum: checksum,
     reasons: List.unmodifiable(reasons),
     knownRecipient: knownRecipient,
-    lookalikes: List.unmodifiable(lookalikes),
+    lookalikes: List.unmodifiable([
+      ...(extra.isEmpty
+          ? knownMatches
+          : closestFirst([...knownMatches, ...extra])),
+      ...(batchShown ?? batchMatches),
+    ]),
     prefixLength: prefixLength,
     suffixLength: suffixLength,
   );
 
-  if (match.isNotEmpty) {
+  final paidByOwner = matches.any(
+    (entry) => entry.provenance == RecipientProvenance.sentByOwner,
+  );
+
+  // A planted transfer outranks an address-book entry, because saving the look-alike copied from
+  // the history is the attack succeeding. It never outranks the owner's own signed payment.
+  if (match.isNotEmpty && (!planted || paidByOwner)) {
     // The bytes are a known recipient's, so it cannot be imitating another one. Altered casing
     // still means someone edited it, which is worth stopping for.
     if (checksum == ChecksumState.mismatch) {
       return result(RecipientVerdict.badChecksum, knownRecipient: match.first);
     }
     reasons.add(
-      matches.any(
-            (entry) => entry.provenance == RecipientProvenance.sentByOwner,
-          )
+      paidByOwner
           ? RecipientReason.knownRecipient
           : RecipientReason.savedRecipient,
     );
-    if (lookalikes.any((m) => m.source == MatchSource.knownRecipient)) {
+    if (knownMatches.isNotEmpty) {
       reasons.add(RecipientReason.othersShareEnds);
     }
     return result(RecipientVerdict.known, knownRecipient: match.first);
   }
-  if (lookalikes.isNotEmpty) {
-    if (lookalikes.any((m) => m.source == MatchSource.knownRecipient)) {
+  if (knownMatches.isNotEmpty || batchMatches.isNotEmpty || planted) {
+    if (knownMatches.isNotEmpty || plantedMatches.isNotEmpty) {
       reasons.add(RecipientReason.imitatesKnownRecipient);
     }
-    if (lookalikes.any((m) => m.source == MatchSource.sameBatch)) {
+    // A batch row the history screen already named is shown once, as the known recipient it was.
+    final batchShown = [
+      for (final match in batchMatches)
+        if (!imitated.contains(match.imitated)) match,
+    ];
+    if (batchShown.isNotEmpty) {
       reasons.add(RecipientReason.imitatesBatchEntry);
     }
-    return result(RecipientVerdict.lookalike);
+    if (planted) reasons.add(RecipientReason.plantedInHistory);
+    return result(
+      RecipientVerdict.lookalike,
+      extra: plantedMatches,
+      batchShown: batchShown,
+    );
   }
   if (checksum == ChecksumState.mismatch) {
     return result(RecipientVerdict.badChecksum);
@@ -238,3 +286,21 @@ RecipientCheck assessRecipient(
   );
   return result(RecipientVerdict.firstTime);
 }
+
+/// What [screenHistory] found for [normalized]: the known recipients it imitated in the history,
+/// read once. A suspect built by hand may carry a checksummed counterparty; matches that do not
+/// name another known recipient are not evidence, and a suspect with none is ignored, so a
+/// look-alike verdict always has something to show.
+List<LookalikeMatch> _plantedEvidence(
+  Iterable<PoisoningSuspect> suspects,
+  String normalized,
+) => [
+  for (final suspect in suspects)
+    if (isEvmAddress(suspect.counterparty) &&
+        normalizeAddress(suspect.counterparty) == normalized)
+      for (final match in suspect.imitates)
+        if (match.source == MatchSource.knownRecipient &&
+            isEvmAddress(match.imitated) &&
+            normalizeAddress(match.imitated) != normalized)
+          match,
+];
