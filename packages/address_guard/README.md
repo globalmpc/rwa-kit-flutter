@@ -2,7 +2,7 @@
 
 Catch address-poisoning look-alikes before a Flutter wallet sends.
 
-`address_guard` marks the fake transfers an attacker plants in a wallet's history, compares the address a user is about to pay with the addresses that user has really paid before, checks its EIP-55 checksum, and shows it on a confirm card that makes the difference visible. It is pure Dart plus one Flutter widget: no native code, no network calls, no keys and no storage.
+`address_guard` marks the fake transfers an attacker plants in a wallet's history, compares the address a user is about to pay with the addresses that user has really paid before, checks its EIP-55 checksum, and shows it on a confirm card that makes the difference visible. It is pure Dart plus a few Flutter widgets (a Material confirm card, and a builder for any other design): no native code, no network calls, no keys and no storage.
 
 ![Animation, landscape, split in two. On the left, without the package: a wallet history shows a payment to 0xa1b2…5678 and a planted zero-value transfer to a look-alike that reads the same when shortened; the user copies the look-alike and the payment is sent to the attacker, which cannot be reversed. On the right, with address_guard: the same history marks the planted entry as suspected poisoning, and when the look-alike is pasted anyway the confirm card shows all 40 characters with the differing middle highlighted and offers no confirm button. Every address is synthetic.](https://raw.githubusercontent.com/globalmpc/rwa-kit-flutter/main/packages/address_guard/doc/without-and-with.gif)
 
@@ -138,6 +138,58 @@ A look-alike is a suspect on its own; the signs explain it. `AddressGuardStrings
 
 This is the data the trust rule refuses: token logs and incoming transfers that anyone can forge. It is safe here because it can only raise an alarm. Nothing `screenHistory` reads makes an address known, and an entry whose counterparty the owner has really paid is never flagged. A counterparty that is only in the address book is still flagged, because copying the look-alike from the history into the address book is how the attack succeeds. Two saved addresses that resemble each other therefore flag each other: nothing says which one is real, and a false alarm is the safe mistake. Pass the transfers and the known recipients of one account on one chain. Pass the result to `assessRecipient` as `suspects`, and an address copied from such an entry is a `lookalike` with the reason `plantedInHistory`, shown on the card next to the address it imitates. That holds even if it was saved since, and even if the user's known recipients have changed since the history was screened.
 
+## Read an explorer API
+
+Most wallets already fetch an account's history from an Etherscan-compatible API: Etherscan API V2 for every chain it covers (`chainid=56` for BNB Smart Chain), or a Blockscout explorer's `/api`. Two functions turn its rows into the records above, so the trust rule holds without mapping fields by hand:
+
+```dart
+// The rows of a response. An error (a bad key, a rate limit) comes back with a message in
+// `result` instead of a list: fail loudly rather than screen an empty history.
+List<Map<String, Object?>> rows(String body) {
+  final result = (jsonDecode(body) as Map<String, Object?>)['result'];
+  if (result is! List<Object?>) throw StateError('explorer error: $result');
+  return result.cast<Map<String, Object?>>();
+}
+
+// These APIs return at most 10,000 rows per query (page times offset), oldest first by default.
+// Known recipients need every send the account ever made: walk txlist by block range with
+// startblock and endblock (or keep the wallet's own record of what it sent). Screening needs the
+// recent rows, where planted transfers are: ask for those with sort=desc.
+final allTxlistRows = rows(allTxlistBody); // module=account&action=txlist, every block range
+final txlistRows = rows(txlistBody); // module=account&action=txlist&sort=desc
+final tokentxRows = rows(tokentxBody); // module=account&action=tokentx&sort=desc
+
+// The account's transactions, sent and received: only its own successful sends count.
+final known = [
+  ...deriveKnownRecipients(account, allTxlistRows.map(sentTransactionFromExplorer).nonNulls),
+  // ...plus the address book, as before.
+];
+
+// What to screen, each transfer next to the row it came from.
+final activity = [
+  for (final row in txlistRows)
+    if (historyTransferFromExplorer(row, ExplorerList.txlist) case final transfer?)
+      (row: row, transfer: transfer),
+  for (final row in tokentxRows)
+    if (historyTransferFromExplorer(row, ExplorerList.tokentx) case final transfer?)
+      (row: row, transfer: transfer),
+];
+
+final suspects = screenHistory(
+  account,
+  [for (final entry in activity) entry.transfer],
+  known: known,
+  listedTokens: myTokens,
+);
+// activity[suspect.index].row['hash'] is the transaction to hide or mark in the wallet's list.
+```
+
+- `sentTransactionFromExplorer` reads `txlist` rows only, whose `from` is the signer. A `tokentx` row throws `ArgumentError`: its `from` comes from a `Transfer` log, the poisoning step itself, so the mistake the box above warns about cannot be made by accident. A transaction succeeded only when `isError` is `"0"` and `txreceipt_status` is `"1"`; an empty status is not success, since "known" is the mistake to avoid.
+- `historyTransferFromExplorer` reads every `txlist` row as a native-coin transfer of its `value`, calldata or not, so a look-alike that sends the account a transaction is screened; a failed one moved nothing, so its amount is zero. The account's own contract calls cannot raise an alarm, because `screenHistory` never flags a native send from the account. Every `tokentx` row is a transfer of the token at its `contractAddress`, zero-value and counterfeit ones included, which are what `screenHistory` looks for; NFT rows are kept too, so their senders are screened, with the `tokenValue` count (or one) as the amount. A row read as the wrong list throws `ArgumentError` rather than being misread: a `txlist` row is one with `isError`, which no token row has, and no `errCode` or `traceId`, which internal-transaction rows (`txlistinternal`) have; this package does not read those.
+- A `txlist` row with a missing or malformed field (a sender that is not an address, no `nonce`, an unreadable status) returns null from `sentTransactionFromExplorer`, so one bad row never hides the rest; only a row from another list throws. History rows are read for alarms only, so they are dropped only without a readable sender, recipient or amount. `PoisoningSuspect.index` is a position in the list given to `screenHistory`, so keep each transfer next to its row, as above, and find the entry to hide or mark in the wallet's own activity view by the row's `hash`. The list screened is not a list to show: the account's own token payments are in it twice, as the call to the token contract and as the transfer.
+
+The package still makes no network call: the app fetches the rows, and these functions only read them. History APIs with other shapes, such as NodeReal's `nr_getAssetTransfers`, are not read yet; map them to `HistoryTransfer` by hand, and build `SentTransaction` only from the transactions themselves.
+
 ## The verdicts
 
 `assessRecipient` runs the checks in order of how much each should stop a payment, and the first that decides wins:
@@ -167,7 +219,45 @@ The comparison window is a minimum: at least three characters at the start and f
 
 `allowOverride: true` lets a user confirm a look-alike or an altered address after ticking an explicit override. It is off by default, because both verdicts mean "do not send".
 
-`onConfirm` is called at most once while the card shows the same check on the same chain. If what the user's decision rested on changes while the card is open (the address or its casing, the verdict, the addresses it imitates, the chain, or `allowOverride`), any tick is cleared and the user must confirm again. A parent that rebuilds with an equal check keeps the tick. To ask again for the same address, give the card a new `Key`. `AddressText` is the address display on its own, for wallets that build their own layout.
+`onConfirm` is called at most once while the card shows the same check on the same chain. If what the user's decision rested on changes while the card is open (the address or its casing, the verdict, its reasons, the known recipient's label, the addresses it imitates, the chain, or `allowOverride`), any tick is cleared and the user must confirm again. A parent that rebuilds with an equal check keeps the tick. To ask again for the same address, give the card a new `Key`. `AddressText` is the address display on its own, for wallets that build their own layout.
+
+### Your own design system
+
+The card is Material. For any other look, draw the step with `RecipientConfirmBuilder`. It keeps the card's rules (which tick to ask for, when confirming is allowed, clearing the tick when the recipient changes, confirming once) and hands your builder a `RecipientConfirmState`. It draws nothing itself and needs no Material ancestor or theme.
+
+```dart
+RecipientConfirmBuilder(
+  check: check,
+  chainId: 56,
+  onConfirm: (confirmed) => setState(() => _confirmed = confirmed),
+  builder: (context, state) => MyConfirmSheet(
+    title: strings.titleFor(state.check),
+    // Null for invalid input: show state.check.candidate as typed.
+    address: state.candidateCharacters,
+    imitated: state.imitatedCharacters,
+    imitatedLabels: [
+      for (final match in state.imitated)
+        match.source == MatchSource.knownRecipient
+            ? strings.imitatedLabel // an address the user paid or saved
+            : strings.imitatedBatchLabel, // another row of the same list
+    ],
+    reasons: [for (final reason in state.check.reasons) strings.reason(reason)],
+    tick: switch (state.acknowledgement) {
+      final acknowledgement? => strings.acknowledgement(acknowledgement),
+      null => null,
+    },
+    ticked: state.acknowledged,
+    onTick: state.onAcknowledgedChanged,
+    showConfirm: state.showsConfirm,
+    dangerous: state.overridesStop,
+    onConfirm: state.onConfirm, // null while confirming is not allowed
+  ),
+);
+```
+
+To test your sheet on its own, build a `RecipientConfirmState` directly; in the app, take the one the builder hands over. Take the callbacks from the latest state. One kept from before the check, the chain or `allowOverride` changed does nothing, so a sheet left open on an earlier recipient can never confirm the current one.
+
+Each `AddressCharacter` says whether it is in the middle (set it in bold) and whether it differs from the address it is compared with (highlight it). `addressCharacters(address, compareWith:)` marks any address the same way. Show the characters in groups of four, and give screen readers `strings.addressSemantics(groups)`.
 
 ## Payout lists
 
@@ -198,7 +288,7 @@ final strings = AddressGuardStrings(
 );
 ```
 
-`strings.reason(reason)` and `strings.title(verdict)` give the sentence for any result, for a wallet that shows verdicts outside the card.
+`strings.reason(reason)`, `strings.title(verdict)` and `strings.acknowledgement(acknowledgement)` give the text for any result, for a wallet that shows verdicts outside the card.
 
 ## API
 
@@ -208,11 +298,14 @@ final strings = AddressGuardStrings(
 | `HistoryTransfer` | One activity entry: `from`, `to`, `amount`, `token` (null for the native coin). |
 | `deriveKnownRecipients(owner, transactions, minNativeValue?, minTokenAmount?)` | The recipients the owner's own signatures named, deduplicated, first seen first. |
 | `SentTransaction` | One transaction the account sent: `from`, `to`, `value`, `input`, `succeeded`. |
+| `sentTransactionFromExplorer(row)`, `historyTransferFromExplorer(row, list)`, `ExplorerList` | Rows of an Etherscan-compatible `txlist` or `tokentx` response, as `SentTransaction` and `HistoryTransfer`. |
 | `KnownRecipient(address, provenance, label?)` | A recipient with `RecipientProvenance.sentByOwner` or `confirmedByUser`. |
 | `assessRecipient(candidate, known:, batch?, suspects?, prefixLength?, suffixLength?)` | The verdict, reasons and look-alike evidence for one address. Returns `RecipientCheck`. |
 | `RecipientConfirmCard` | The confirm card. Returns a `ConfirmedRecipient` through `onConfirm`. |
+| `RecipientConfirmBuilder`, `RecipientConfirmState`, `RecipientAcknowledgement` | The card's rules without its look, for your own design system. |
 | `ConfirmedRecipient.matches(address, chainId)` | Whether a transaction is the one the user confirmed. |
 | `AddressText` | The full address in groups, with optional difference highlighting. |
+| `addressCharacters(address, prefixLength?, suffixLength?, compareWith?)`, `AddressCharacter` | An address's 40 characters, marked the way the card shows them. |
 | `findLookalikes(candidate, others, prefixLength?, suffixLength?, source?)` | The look-alike matcher on its own, closest copy first. |
 | `recipientNamedBy`, `decodeErc20Transfer` | The trust rule for one record, and its strict `transfer(address,uint256)` decoder. |
 | `toChecksumAddress`, `checksumState`, `isValidChecksum`, `isEvmAddress`, `normalizeAddress` | EIP-55 and address helpers. `checksumState` separates `checksummed`, `unchecksummed` (one case throughout, nothing to verify) and `mismatch`. |

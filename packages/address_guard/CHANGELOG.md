@@ -6,6 +6,44 @@ All notable changes to `address_guard` are recorded here. The format follows
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-20
+
+Less wiring between a wallet and the checks, and the confirm step in any design system.
+
+### Added
+
+- `sentTransactionFromExplorer` and `historyTransferFromExplorer`, with `ExplorerList`: the rows of
+  an Etherscan-compatible account API (Etherscan API V2, Blockscout) as `SentTransaction` and
+  `HistoryTransfer`. Only a `txlist` row can become a `SentTransaction`: a `tokentx` row, whose
+  sender comes from a `Transfer` log that anyone can forge, throws `ArgumentError`, so the mistake
+  the README warns about cannot be made by accident. `historyTransferFromExplorer` keeps zero-value
+  and counterfeit-token rows, reads every `txlist` row as a native transfer (the account's own
+  contract calls cannot raise an alarm, a look-alike's transaction to it is screened, a failed one
+  moved nothing), keeps NFT rows (with a count as the amount) so their senders are screened too, and
+  throws for a row read as the wrong list, internal-transaction rows included. A transaction counts
+  as succeeded only with `isError` `"0"` and `txreceipt_status` `"1"`; an empty status is not
+  success. A `txlist` row with a missing or malformed field, a missing `nonce` included, returns
+  null; a history row is dropped only when it has no readable sender, recipient or amount.
+- `RecipientConfirmBuilder`, `RecipientConfirmState` and `RecipientAcknowledgement`: the confirm
+  card's rules without its look, for wallets with their own design system. It needs no Material
+  ancestor or theme. The callbacks it hands out belong to the state they came with:
+  once the check, the chain or `allowOverride` changes, a copy kept from before does nothing, so
+  a sheet left open on an earlier recipient cannot confirm the current one. An app can build a
+  `RecipientConfirmState` directly to test its own step.
+- `addressCharacters` and `AddressCharacter`: an address's 40 characters, marked the way the card
+  shows them.
+- `strings.acknowledgement(...)`, the tick text for a `RecipientAcknowledgement`. It is an
+  extension (`AddressGuardStringsAcknowledgement`), so a class that implements
+  `AddressGuardStrings` keeps compiling.
+
+### Changed
+
+- `RecipientConfirmCard` is drawn on `RecipientConfirmBuilder`, so the two cannot follow different
+  rules. Its constructor is unchanged, and so is what it shows for any check `assessRecipient`
+  returns. A change in the known recipient's label, printed next to the address, now also clears
+  the tick. A hand-built `RecipientCheck` with a look-alike that is not an address now fails when
+  the card is built, not only when that look-alike is among the three shown.
+
 ## 0.2.0 - 2026-11-12
 
 Matches look-alikes the way attackers make them, and marks the planted transfers in the

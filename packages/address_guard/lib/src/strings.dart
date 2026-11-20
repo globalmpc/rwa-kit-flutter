@@ -1,8 +1,9 @@
+import 'acknowledgement.dart';
 import 'assess.dart';
 import 'history.dart';
 
 /// Every user-facing text in [RecipientConfirmCard] and for [screenHistory] results, with English
-/// defaults.
+/// defaults. An app that draws its own step with [RecipientConfirmBuilder] can use them too.
 ///
 /// Replace any of them to translate or reword. Texts that carry a value are functions.
 class AddressGuardStrings {
@@ -157,6 +158,18 @@ class AddressGuardStrings {
     PoisoningSign.unlistedToken => signUnlistedToken,
     PoisoningSign.namesOwnerAsSender => signNamesOwnerAsSender,
   };
+}
+
+/// Texts added after 0.2.0, as an extension so that a class implementing [AddressGuardStrings]
+/// keeps compiling.
+extension AddressGuardStringsAcknowledgement on AddressGuardStrings {
+  /// The tick text for [acknowledgement]: [AddressGuardStrings.firstTimeAcknowledgement] or
+  /// [AddressGuardStrings.overrideAcknowledgement].
+  String acknowledgement(RecipientAcknowledgement acknowledgement) =>
+      switch (acknowledgement) {
+        RecipientAcknowledgement.checkedFullAddress => firstTimeAcknowledgement,
+        RecipientAcknowledgement.override => overrideAcknowledgement,
+      };
 }
 
 String _defaultMoreImitated(int hidden) =>
