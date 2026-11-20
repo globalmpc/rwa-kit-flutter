@@ -1,7 +1,13 @@
+// Flutter 3.50 deprecates this library in favour of package:material_ui, but the two are separate
+// copies: a material_ui card inside an app built on MaterialApp from flutter/material, which is
+// nearly every app today, would not see the app's Theme, and material_ui needs Flutter 3.47 or
+// later. Keep flutter/material until host apps have moved; RecipientConfirmBuilder needs neither.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
-import 'address.dart';
+import 'address_characters.dart';
 import 'assess.dart';
+import 'confirm_builder.dart';
 import 'confirmed_recipient.dart';
 import 'lookalike.dart';
 import 'strings.dart';
@@ -25,8 +31,8 @@ import 'strings.dart';
 /// [onConfirm] receives a [ConfirmedRecipient] bound to the address and chain that were shown,
 /// and is called at most once until the check, the chain or [allowOverride] changes. Any of those
 /// changes also clears the tick: the check counts as changed when its address or casing, its
-/// verdict, its reasons, or the addresses it imitates differ, so a recipient swapped while the
-/// card is open is never confirmed by an earlier tick. To ask again for the same address, give the
+/// verdict, its reasons, the known recipient's label, or the addresses it imitates differ, so a
+/// recipient swapped while the card is open is never confirmed by an earlier tick. To ask again for the same address, give the
 /// card a new [Key]. Check the confirmation against the transaction with
 /// [ConfirmedRecipient.matches] just before signing.
 class RecipientConfirmCard extends StatefulWidget {
@@ -65,86 +71,27 @@ class RecipientConfirmCard extends StatefulWidget {
   State<RecipientConfirmCard> createState() => _RecipientConfirmCardState();
 }
 
-/// Imitated addresses shown in full; the rest are counted.
-const int _shownMatches = 3;
-
-/// What the user saw of [check], as one comparable value.
-String _shown(RecipientCheck check) => [
-  check.candidate,
-  check.verdict.name,
-  for (final reason in check.reasons) reason.name,
-  for (final match in check.lookalikes)
-    '${match.imitated}:${match.source.name}',
-].join('|');
-
+// A State only so the widget's public type stays what 0.2.0 shipped; the rules live in
+// RecipientConfirmBuilder.
 class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
-  bool _acknowledged = false;
-  bool _confirmed = false;
-
   @override
-  void didUpdateWidget(RecipientConfirmCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Compared by value, so a parent that rebuilds the same check keeps the tick, and anything
-    // the user's decision rested on clears it: the address, the verdict, what it imitates, the
-    // chain, or whether an override is allowed.
-    final changed =
-        _shown(oldWidget.check) != _shown(widget.check) ||
-        oldWidget.chainId != widget.chainId ||
-        oldWidget.allowOverride != widget.allowOverride;
-    if (changed) {
-      _acknowledged = false;
-      _confirmed = false;
-    }
-  }
+  Widget build(BuildContext context) => RecipientConfirmBuilder(
+    check: widget.check,
+    chainId: widget.chainId,
+    allowOverride: widget.allowOverride,
+    onConfirm: widget.onConfirm,
+    builder: _build,
+  );
 
-  RecipientVerdict get _verdict => widget.check.verdict;
-
-  /// A verdict that blocks confirming unless an override is allowed. Invalid input never
-  /// confirms, so it is handled apart.
-  bool get _stops =>
-      widget.check.shouldStop && _verdict != RecipientVerdict.invalid;
-
-  /// The tick the user must give before confirming, or null when none is needed or possible.
-  String? get _acknowledgement {
-    if (_verdict == RecipientVerdict.firstTime) {
-      return widget.strings.firstTimeAcknowledgement;
-    }
-    if (_stops && widget.allowOverride) {
-      return widget.strings.overrideAcknowledgement;
-    }
-    return null;
-  }
-
-  bool get _canConfirm {
-    if (_confirmed) return false;
-    if (_verdict == RecipientVerdict.invalid) return false;
-    if (_stops) return widget.allowOverride && _acknowledged;
-    if (_verdict == RecipientVerdict.firstTime) return _acknowledged;
-    return true;
-  }
-
-  void _confirm() {
-    if (!_canConfirm) return;
-    setState(() => _confirmed = true);
-    widget.onConfirm(
-      ConfirmedRecipient(
-        address: widget.check.candidate,
-        chainId: widget.chainId,
-        verdict: _verdict,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _build(BuildContext context, RecipientConfirmState state) {
     final strings = widget.strings;
-    final check = widget.check;
+    final check = state.check;
     final theme = Theme.of(context);
-    final tone = _Tone.of(_verdict, theme.colorScheme);
-    final imitated = check.verdict == RecipientVerdict.lookalike
-        ? check.lookalikes
-        : const <LookalikeMatch>[];
-    final acknowledgement = _acknowledgement;
+    final tone = _Tone.of(check.verdict, theme.colorScheme);
+    final imitated = state.imitated;
+    final candidate = candidateLayout(check, imitated);
+    final acknowledgement = state.acknowledgement;
+    final onAcknowledgedChanged = state.onAcknowledgedChanged;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -184,25 +131,18 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                   style: theme.textTheme.labelLarge,
                 ),
                 const SizedBox(height: 8),
-                if (check.verdict == RecipientVerdict.invalid)
+                if (state.candidateCharacters == null)
                   SelectableText(check.candidate, style: _monospace(theme))
                 else
-                  AddressText(
+                  AddressText._marked(
+                    state.candidateCharacters!,
                     address: check.candidate,
-                    // The part a look-alike changed, where there is one; otherwise the window.
-                    prefixLength: imitated.isEmpty
-                        ? check.prefixLength
-                        : _sharedHead(check.candidate, imitated.first.imitated),
-                    suffixLength: imitated.isEmpty
-                        ? check.suffixLength
-                        : _sharedTail(check.candidate, imitated.first.imitated),
-                    compareWith: imitated.isEmpty
-                        ? null
-                        : imitated.first.imitated,
+                    layout: candidate,
                     strings: strings,
                     key: const ValueKey('address_guard.candidate'),
                   ),
-                for (final match in imitated.take(_shownMatches)) ...[
+                for (final (index, match)
+                    in imitated.take(_shownMatches).indexed) ...[
                   const SizedBox(height: 16),
                   Text(
                     match.source == MatchSource.knownRecipient
@@ -211,11 +151,10 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                     style: theme.textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
-                  AddressText(
+                  AddressText._marked(
+                    state.imitatedCharacters[index],
                     address: match.imitated,
-                    prefixLength: _sharedHead(check.candidate, match.imitated),
-                    suffixLength: _sharedTail(check.candidate, match.imitated),
-                    compareWith: check.candidate,
+                    layout: imitatedLayout(match.imitated, check.candidate),
                     strings: strings,
                   ),
                 ],
@@ -248,12 +187,11 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
-                    value: _acknowledged,
-                    onChanged: _confirmed
+                    value: state.acknowledged,
+                    onChanged: onAcknowledgedChanged == null
                         ? null
-                        : (value) =>
-                              setState(() => _acknowledged = value ?? false),
-                    title: Text(acknowledgement),
+                        : (value) => onAcknowledgedChanged(value ?? false),
+                    title: Text(strings.acknowledgement(acknowledgement)),
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -267,11 +205,10 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
                         onPressed: widget.onCancel,
                         child: Text(strings.cancel),
                       ),
-                    if (_verdict != RecipientVerdict.invalid &&
-                        (!_stops || widget.allowOverride))
+                    if (state.showsConfirm)
                       FilledButton(
-                        onPressed: _canConfirm ? _confirm : null,
-                        style: _stops
+                        onPressed: state.onConfirm,
+                        style: state.overridesStop
                             ? FilledButton.styleFrom(
                                 backgroundColor: theme.colorScheme.error,
                                 foregroundColor: theme.colorScheme.onError,
@@ -290,6 +227,9 @@ class _RecipientConfirmCardState extends State<RecipientConfirmCard> {
   }
 }
 
+/// Imitated addresses shown in full; the rest are counted.
+const int _shownMatches = 3;
+
 /// A full EVM address in groups of four characters, read as one spelled-out label by screen
 /// readers.
 ///
@@ -304,7 +244,20 @@ class AddressText extends StatelessWidget {
     this.suffixLength = defaultSuffixLength,
     this.compareWith,
     this.strings = const AddressGuardStrings(),
-  });
+  }) : _characters = null;
+
+  /// The card's own: characters [RecipientConfirmBuilder] already marked with [layout], so they
+  /// are not worked out twice and the card shows exactly what the builder hands out.
+  AddressText._marked(
+    List<AddressCharacter> characters, {
+    super.key,
+    required this.address,
+    required AddressLayout layout,
+    required this.strings,
+  }) : prefixLength = layout.prefixLength,
+       suffixLength = layout.suffixLength,
+       compareWith = layout.compareWith,
+       _characters = characters;
 
   /// Throws [FormatException] at build time unless it is an EVM address.
   final String address;
@@ -315,13 +268,21 @@ class AddressText extends StatelessWidget {
   final String? compareWith;
   final AddressGuardStrings strings;
 
+  final List<AddressCharacter>? _characters;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Validates, and keeps the casing the user gave: it is what they compare with the source.
-    final lower = addressBody(address);
-    final body = address.substring(2);
-    final other = compareWith == null ? null : addressBody(compareWith!);
+    // Validates both addresses, and keeps the casing the user gave: it is what they compare with
+    // the source.
+    final characters =
+        _characters ??
+        addressCharacters(
+          address,
+          prefixLength: prefixLength,
+          suffixLength: suffixLength,
+          compareWith: compareWith,
+        );
     final base = _monospace(theme);
     final emphasis = base.copyWith(fontWeight: FontWeight.w700);
     final differs = base.copyWith(
@@ -331,19 +292,18 @@ class AddressText extends StatelessWidget {
       decoration: TextDecoration.underline,
     );
 
+    // Read from the characters shown, so the spoken address can never differ from the visible one.
     final groups = <String>[
       for (var start = 0; start < 40; start += 4)
-        body.substring(start, start + 4),
+        characters.sublist(start, start + 4).map((c) => c.character).join(),
     ];
 
-    TextSpan charSpan(int index) {
-      final isMiddle = index >= prefixLength && index < 40 - suffixLength;
-      final isDifferent = other != null && other[index] != lower[index];
-      return TextSpan(
-        text: body[index],
-        style: isDifferent ? differs : (isMiddle ? emphasis : base),
-      );
-    }
+    TextSpan charSpan(AddressCharacter character) => TextSpan(
+      text: character.character,
+      style: character.differs
+          ? differs
+          : (character.inMiddle ? emphasis : base),
+    );
 
     return Semantics(
       // Its own node, so the spelled-out address is announced on its own and never merged into
@@ -361,7 +321,7 @@ class AddressText extends StatelessWidget {
               TextSpan(
                 children: [
                   for (var index = group * 4; index < group * 4 + 4; index++)
-                    charSpan(index),
+                    charSpan(characters[index]),
                 ],
               ),
             ),
@@ -370,14 +330,6 @@ class AddressText extends StatelessWidget {
     );
   }
 }
-
-// Counted from the addresses rather than read from a match, so the bold part is right whatever
-// built the match.
-int _sharedHead(String a, String b) =>
-    sharedHead(addressBody(a), addressBody(b));
-
-int _sharedTail(String a, String b) =>
-    sharedTail(addressBody(a), addressBody(b));
 
 TextStyle _monospace(ThemeData theme) =>
     (theme.textTheme.bodyLarge ?? const TextStyle()).copyWith(
