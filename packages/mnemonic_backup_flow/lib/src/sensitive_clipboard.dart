@@ -42,8 +42,10 @@ const _retryAfter = Duration(seconds: 5);
 /// answers cannot block the ones behind it; a write that lands after its bound is removed at
 /// once, since the user was told it failed.
 class SensitiveClipboard {
+  /// A clipboard that empties what it copied after [clearAfter].
   SensitiveClipboard({this.clearAfter = const Duration(seconds: 30)});
 
+  /// How long copied text stays on the clipboard.
   final Duration clearAfter;
 
   final _queue = SerialQueue();

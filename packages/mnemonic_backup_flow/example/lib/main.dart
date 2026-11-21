@@ -51,6 +51,72 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// The same backup drawn with plain widgets, the way a wallet with its own design system draws
+  /// it: MnemonicBackupFlowBuilder keeps every rule and hands over what to draw.
+  Future<void> _backUpInYourOwnLook() async {
+    final words = MnemonicWords.generate(wordCount: 12);
+    if (!await _askDemoPin(context) || !mounted) {
+      return;
+    }
+    final verified = await Navigator.of(context).push<bool>(
+      PageRouteBuilder<bool>(
+        pageBuilder: (context, _, _) => MnemonicBackupFlowBuilder(
+          words: words,
+          screenProtection: _screenProtection,
+          onVerified: () => Navigator.of(context).pop(true),
+          waitingBuilder: (context, phase) => _PlainPage(
+            children: [
+              _PlainText(_strings.placeholder(phase)!),
+              _CancelButton(context),
+            ],
+          ),
+          revealBuilder: (context, state) => _PlainPage(
+            children: [
+              _PlainText(_strings.revealWarning),
+              if (state.words case final shown?)
+                for (final (index, word) in shown.indexed)
+                  _PlainText('${index + 1}. $word')
+              else if (state.covered)
+                _PlainButton(_strings.revealShow, onTap: state.onShow)
+              else
+                _PlainText(_strings.placeholder(state.phase)!),
+              _PlainButton(_strings.revealConfirm, onTap: state.onConfirmed),
+              _CancelButton(context),
+            ],
+          ),
+          verifyBuilder: (context, state) => _PlainPage(
+            children: [
+              _PlainText(_strings.verifyProgress(state.step, state.stepCount)),
+              if (state.challenge case final challenge?) ...[
+                _PlainText(_strings.verifyPrompt(challenge.position)),
+                for (final choice in challenge.choices)
+                  _PlainButton(
+                    choice,
+                    onTap: state.onAnswer == null
+                        ? null
+                        : () => state.onAnswer!(choice),
+                  ),
+                if (state.wrong)
+                  _PlainText(_strings.verifyWrong(challenge.position)),
+              ] else
+                _PlainText(_strings.placeholder(state.phase)!),
+              _CancelButton(context),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(
+      () => _status =
+          'Own-look backup: ${verified == true ? 'verified' : 'abandoned'}',
+    );
+  }
+
+  static const _strings = MnemonicBackupStrings();
+
   Future<void> _importPhrase() async {
     final words = await Navigator.of(context).push<MnemonicWords>(
       MaterialPageRoute<MnemonicWords>(
@@ -123,9 +189,106 @@ class _HomePageState extends State<HomePage> {
               onPressed: _importPhrase,
               child: const Text('Import a phrase'),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _backUpInYourOwnLook,
+              child: const Text('Back up in your own look'),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// A page in a plain look of its own: dark, no Material widgets.
+class _PlainPage extends StatelessWidget {
+  const _PlainPage({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xFF101418),
+    // A text style of its own: with no Material page above, text would otherwise take the
+    // framework's fallback style.
+    child: DefaultTextStyle(
+      style: const TextStyle(
+        color: Color(0xFFE6EDF3),
+        fontSize: 16,
+        decoration: TextDecoration.none,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _PlainText extends StatelessWidget {
+  const _PlainText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Text(
+      text,
+      style: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 16),
+    ),
+  );
+}
+
+/// A button drawn from scratch, disabled while [onTap] is null.
+class _PlainButton extends StatelessWidget {
+  const _PlainButton(this.label, {required this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: onTap != null,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.4 : 1,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFF6E8BFF)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF6E8BFF), fontSize: 16),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A plain route has no back button and no swipe-back on iOS, so every page offers a way out:
+/// leaving the route is what releases the screen protection.
+class _CancelButton extends StatelessWidget {
+  const _CancelButton(this.routeContext);
+
+  final BuildContext routeContext;
+
+  @override
+  Widget build(BuildContext context) => _PlainButton(
+    'Cancel',
+    onTap: () => Navigator.of(routeContext).pop(false),
+  );
 }

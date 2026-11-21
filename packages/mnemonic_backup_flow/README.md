@@ -99,6 +99,39 @@ MnemonicImportScreen(
 
 The reveal screen keeps the words covered until the user taps Show the words. `obscureUntilShown: false` shows them as soon as the protection is active. The import screen turns autocorrect and suggestions off, accepts any whitespace between words, ignores letter case, hides the field while the app is not in the foreground, empties the clipboard after a paste, and reports three problems separately: a wrong word count (with the count), a word that is not in the list (with the word), and a checksum mismatch.
 
+## Your own design system
+
+The screens are Material. For any other look, draw the steps yourself with the builders. They keep every rule above and hand your builder a state to draw; they need no Material ancestor or theme.
+
+```dart
+// In place of showMnemonicBackupFlow, after the same authentication, on a route of your own.
+MnemonicBackupFlowBuilder(
+  words: words,
+  screenProtection: screenProtection, // held once for both steps, as the flow does
+  onVerified: () => Navigator.of(context).pop(true),
+  waitingBuilder: (context, phase) => MyMessage(strings.placeholder(phase)!),
+  revealBuilder: (context, state) => MyRevealPage(
+    words: state.words,           // null until they may be painted
+    onShow: state.onShow,         // non-null while covered: show strings.revealCovered and a button
+    onContinue: state.onConfirmed, // null until the words are on screen
+    placeholder: strings.placeholder(state.phase), // null when visible
+  ),
+  verifyBuilder: (context, state) => MyVerifyPage(
+    progress: strings.verifyProgress(state.step, state.stepCount),
+    challenge: state.challenge,   // null unless visible: its choices hold a real word
+    onAnswer: state.onAnswer,
+    wrong: state.wrong,
+  ),
+)
+```
+
+`MnemonicRevealBuilder`, `MnemonicVerifyBuilder` and `MnemonicImportBuilder` do the same for one step each, with the parameters of the matching screen and a `builder`.
+
+- **The secret is only handed over when it may be painted.** `words`, `challenge` and the import `controller` are null unless the phase is `MnemonicSecretPhase.visible` (and, for the words, the user has asked to see them). The other phases are `preparing`, `protectionFailed` and `hidden`; `strings.placeholder(phase)` gives the text for each.
+- **Callbacks check again when they are called.** One kept by a sheet built once does nothing after the words are covered again, the app has left the foreground, or the verify step has moved to the next challenge.
+- **Copy and paste report back.** `onCopy` and `onPaste` complete with whether they worked, so you can show `strings.copiedFor` or `strings.copyFailed`, and `strings.pasteFailed`. The import error is a `MnemonicFormatException`; `strings.importError(error)` gives its text, and an edit clears it.
+- **Test your own pages** with a `MnemonicRevealState`, `MnemonicVerifyState` or `MnemonicImportState` built directly; in the app, take the one the builder hands over.
+
 ## Text and languages
 
 Every string has an English default and can be replaced through `MnemonicBackupStrings`. Texts that carry a number or a word are functions:
@@ -110,7 +143,7 @@ const strings = MnemonicBackupStrings(
 );
 ```
 
-Word lists follow `bip39_mnemonic`: pass `language: Language.spanish` (or any other it supports) to `MnemonicWords.generate`, `MnemonicWords.parse` and `MnemonicVerifyScreen`.
+Word lists follow `bip39_mnemonic`: pass `language: Language.spanish` (or any other it supports) to `MnemonicWords.generate` and `MnemonicWords.parse`. The phrase remembers it as `words.language`, and the verify step of `showMnemonicBackupFlow` and of the builders draws its decoys from that list, so the right word is never the only one from the phrase's own list. `MnemonicVerifyScreen` takes a `language` of its own, which must match the phrase.
 
 ## Handling the phrase in code
 
@@ -129,16 +162,19 @@ words.sentence;  // the phrase, one space between words
 
 | Name | Purpose |
 |---|---|
-| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, allowCopy?, obscureUntilShown?, protectionTimeout?)` | Authenticate, then reveal and verify in one protected route. Returns `MnemonicBackupResult`. |
+| `showMnemonicBackupFlow(context, words:, authenticate:, screenProtection:, strings?, challengeCount?, language?, allowCopy?, obscureUntilShown?, protectionTimeout?)` | Authenticate, then reveal and verify in one protected route. Returns `MnemonicBackupResult`. |
 | `MnemonicRevealScreen` | Numbered words behind the screen protection, covered until the user asks to see them, hidden while not in the foreground, optional copy with timed clearing. |
 | `MnemonicVerifyScreen` | Distinct-position multiple-choice check behind the screen protection; retry after a wrong answer. |
 | `MnemonicImportScreen` | Typed or pasted phrase, validated, clipboard emptied after paste. |
+| `MnemonicBackupFlowBuilder` | The reveal and verify steps behind one hold on the protection, drawn by your own builders. |
+| `MnemonicRevealBuilder`, `MnemonicVerifyBuilder`, `MnemonicImportBuilder` | One step each with the screen's rules, drawn by your own builder from a `MnemonicRevealState`, `MnemonicVerifyState` or `MnemonicImportState`. |
+| `MnemonicSecretPhase` | `preparing`, `protectionFailed`, `hidden` or `visible`: whether the secret may be painted, and if not, why. |
 | `MnemonicWords` | Generate, parse, hold a phrase; redacted `toString`. |
 | `MnemonicFormatException` | `problem` is `wordCount`, `unknownWord` or `checksum`; `wordCount` and `word` carry the detail. |
 | `generateChallenges(words, wordList:, count?, choiceCount?, random?)` | The verification questions, for a custom verify UI. |
 | `ScreenProtection` | `none()`, `callbacks(protect:, release:)`, or your own subclass. |
 | `SensitiveClipboard` | Copy with timed clearing, the timer starting when the write has landed, that never removes text the user copied later and remembers a copied text until a look proves it gone. A clipboard without text means the copy is gone, except on Android with the app out of the foreground, where the clipboard is hidden: then it looks three times, five seconds apart, then wipes without looking, and only text it knows it placed. `clear()` and dispose remove the text at once, wiping without looking when the clipboard is hidden or unreadable, and a failed wipe is retried. Text the platform holds but will not show (iOS 16 and later ask the user before another app's text is read) is not ours and is left alone. Every platform call is bounded; a write that lands after its bound is removed at once, and `copy()` after `dispose()` throws. |
-| `MnemonicBackupStrings` | All user-facing text. |
+| `MnemonicBackupStrings` | All user-facing text. `strings.placeholder(phase)` and `strings.importError(error)` give the texts the builders need. |
 
 ## What it does not do
 

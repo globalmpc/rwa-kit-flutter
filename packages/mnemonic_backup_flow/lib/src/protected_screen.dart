@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'lifecycle.dart';
 import 'report.dart';
 import 'screen_protection.dart';
-import 'strings.dart';
+import 'secret_phase.dart';
 
 /// Activates the screen protection when the state is created and releases it when the state is
 /// disposed, with the two calls ordered: the release waits for the protect to settle, so a screen
@@ -29,6 +29,7 @@ import 'strings.dart';
 /// must not throw from `initState` after `super.initState()`: a State whose `initState` throws is
 /// never disposed, so the protection would stay on and the lifecycle observer registered.
 mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
+  /// The protection to switch on, read once when the state is created.
   ScreenProtection get screenProtection;
 
   /// How long this screen waits for protect() before treating it as failed, and how long its
@@ -41,10 +42,6 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   /// True when protect() threw or has not answered within [protectionTimeout].
   bool get protectionFailed => _status == _ProtectionStatus.failed;
 
-  /// The text to show in place of the secret while the protection is not active.
-  String protectionPlaceholder(MnemonicBackupStrings strings) =>
-      protectionFailed ? strings.protectionFailed : strings.revealPreparing;
-
   /// True while the secret may be rendered: the protection is active and the app is in the
   /// foreground, where the app switcher snapshot and a notification pull-down are not taken.
   bool get secretVisible => protectionActive && _inForeground;
@@ -55,9 +52,14 @@ mixin ProtectedScreenState<T extends StatefulWidget> on State<T> {
   /// not survive the return. Do not throw.
   void onLeftForeground() {}
 
-  /// The text to show in place of the secret while [secretVisible] is false: why it is hidden.
-  String secretPlaceholder(MnemonicBackupStrings strings) =>
-      protectionActive ? strings.revealHidden : protectionPlaceholder(strings);
+  /// Where the screen stands, for the builders: [secretVisible] as one of four phases.
+  MnemonicSecretPhase get secretPhase {
+    if (protectionFailed) return MnemonicSecretPhase.protectionFailed;
+    if (!protectionActive) return MnemonicSecretPhase.preparing;
+    return _inForeground
+        ? MnemonicSecretPhase.visible
+        : MnemonicSecretPhase.hidden;
+  }
 
   late final ScreenProtection _protection;
   late final Future<void> _activation;

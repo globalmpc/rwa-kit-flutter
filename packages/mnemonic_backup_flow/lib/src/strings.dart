@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 
+import 'mnemonic_words.dart';
+import 'secret_phase.dart';
+
 /// Every piece of user-facing text in the flow, so an app can translate it.
 ///
 /// All values have English defaults. Construct one with only the fields you need changed; the
 /// rest keep their defaults. Texts that carry a number or a word are functions.
 @immutable
 class MnemonicBackupStrings {
+  /// The English texts, with any of them replaced by the ones given.
   const MnemonicBackupStrings({
     this.revealTitle = 'Your recovery phrase',
     this.revealWarning =
@@ -37,7 +41,10 @@ class MnemonicBackupStrings {
         'These words are not a valid recovery phrase. Check the order and the spelling.',
   });
 
+  /// The title of the reveal step.
   final String revealTitle;
+
+  /// The warning above the words: what the phrase is worth and how to keep it.
   final String revealWarning;
 
   /// Shown until the screen protection has confirmed it is active.
@@ -57,6 +64,8 @@ class MnemonicBackupStrings {
 
   /// The button that leaves the reveal step. It stays disabled until the words have been on screen.
   final String revealConfirm;
+
+  /// The copy button, offered only when the app allows copying.
   final String copy;
 
   /// Confirmation after copying; receives the number of seconds until the clipboard is cleared.
@@ -65,6 +74,7 @@ class MnemonicBackupStrings {
   /// Shown when the clipboard write failed.
   final String copyFailed;
 
+  /// The title of the verify step.
   final String verifyTitle;
 
   /// Progress through the challenges, for example "1 of 3".
@@ -76,13 +86,22 @@ class MnemonicBackupStrings {
   /// Shown after a wrong answer; receives the 1-based position.
   final String Function(int position) verifyWrong;
 
+  /// The title of the import step.
   final String importTitle;
+
+  /// Above the input: how many words to enter, and how.
   final String importInstruction;
+
+  /// Shown in the empty input.
   final String importHint;
+
+  /// The paste button.
   final String importPaste;
 
   /// Shown when the clipboard could not be read for a paste.
   final String pasteFailed;
+
+  /// The button that checks the phrase and imports it.
   final String importConfirm;
 
   /// Receives the number of words that were entered.
@@ -104,4 +123,24 @@ class MnemonicBackupStrings {
       'A recovery phrase has 12, 15, 18, 21 or 24 words. You entered $count.';
   static String _importUnknownWord(String word) =>
       '"$word" is not in the word list.';
+}
+
+/// Texts for an app that draws the steps itself with the builders. An extension rather than
+/// methods on the class, so a class that implements [MnemonicBackupStrings] keeps compiling.
+extension MnemonicBackupStringsForBuilders on MnemonicBackupStrings {
+  /// The text to show in place of the secret in [phase]: why it is not on screen. Null for
+  /// [MnemonicSecretPhase.visible], when the secret itself is shown.
+  String? placeholder(MnemonicSecretPhase phase) => switch (phase) {
+    MnemonicSecretPhase.preparing => revealPreparing,
+    MnemonicSecretPhase.protectionFailed => protectionFailed,
+    MnemonicSecretPhase.hidden => revealHidden,
+    MnemonicSecretPhase.visible => null,
+  };
+
+  /// Why a phrase was refused, for `MnemonicImportState.error`.
+  String importError(MnemonicFormatException error) => switch (error.problem) {
+    MnemonicFormatProblem.wordCount => importWrongCount(error.wordCount ?? 0),
+    MnemonicFormatProblem.unknownWord => importUnknownWord(error.word ?? ''),
+    MnemonicFormatProblem.checksum => importInvalid,
+  };
 }

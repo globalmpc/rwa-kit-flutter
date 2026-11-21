@@ -19,21 +19,25 @@ enum MnemonicFormatProblem {
 /// The offending word of an [MnemonicFormatProblem.unknownWord] is on [word], for the UI.
 @immutable
 class MnemonicFormatException implements Exception {
+  /// The phrase has [count] words, not 12, 15, 18, 21 or 24.
   const MnemonicFormatException.wordCount(int count)
     : problem = MnemonicFormatProblem.wordCount,
       wordCount = count,
       word = null;
 
+  /// The word [unknown] is not in the word list.
   const MnemonicFormatException.unknownWord(String unknown)
     : problem = MnemonicFormatProblem.unknownWord,
       wordCount = null,
       word = unknown;
 
+  /// Every word is in the list, but the checksum does not match: a word is wrong or out of order.
   const MnemonicFormatException.checksum()
     : problem = MnemonicFormatProblem.checksum,
       wordCount = null,
       word = null;
 
+  /// What is wrong with the phrase.
   final MnemonicFormatProblem problem;
 
   /// The number of words entered, for [MnemonicFormatProblem.wordCount].
@@ -54,7 +58,8 @@ class MnemonicFormatException implements Exception {
 /// assertion message or a debugging aid.
 @immutable
 class MnemonicWords {
-  MnemonicWords._(List<String> words) : words = List.unmodifiable(words);
+  MnemonicWords._(List<String> words, this._language)
+    : words = List.unmodifiable(words);
 
   /// A new phrase from [Random.secure] entropy. [wordCount] is 12, 15, 18, 21 or 24.
   factory MnemonicWords.generate({
@@ -71,7 +76,10 @@ class MnemonicWords {
         'must be 12, 15, 18, 21 or 24',
       );
     }
-    return MnemonicWords._(Mnemonic.generate(language, length: length).words);
+    return MnemonicWords._(
+      Mnemonic.generate(language, length: length).words,
+      language,
+    );
   }
 
   /// Validates words the user typed or pasted.
@@ -96,7 +104,8 @@ class MnemonicWords {
   /// [parse] does with text, so a phrase scanned or received with capitals is accepted; the held
   /// [words] are the normalised ones. Throws [MnemonicFormatException] for a wrong word count, a
   /// word that is not in the word list (reported as given, without surrounding whitespace), or a
-  /// checksum mismatch.
+  /// checksum mismatch. The held [words] are spelled as in the word list, so an accented word
+  /// typed in another Unicode form is held in the list's form; it looks the same.
   factory MnemonicWords.fromList(
     List<String> words, {
     Language language = Language.english,
@@ -114,17 +123,27 @@ class MnemonicWords {
         throw MnemonicFormatException.unknownWord(given[index]);
       }
     }
+    final Mnemonic mnemonic;
     try {
-      Mnemonic.fromWords(words: normalised, language: language);
+      mnemonic = Mnemonic.fromWords(words: normalised, language: language);
     } on MnemonicException {
       throw const MnemonicFormatException.checksum();
     }
-    return MnemonicWords._(normalised);
+    // The word list's own spelling, as a generated phrase has it. An accented word typed in
+    // another Unicode form looks the same but compares differently, and the verify step's decoys,
+    // drawn from that list, must not repeat a word of the phrase in another form.
+    return MnemonicWords._(mnemonic.words, language);
   }
 
   /// The words in order. Unmodifiable.
   final List<String> words;
 
+  /// Read through [MnemonicWordsLanguage.language]. Private, so a class that implements
+  /// [MnemonicWords] keeps compiling; a field, not kept beside the phrase, so a phrase made in
+  /// another isolate and sent back keeps it.
+  final Language _language;
+
+  /// How many words the phrase has: 12, 15, 18, 21 or 24.
   int get length => words.length;
 
   /// The phrase as one line, words separated by a single space.
@@ -140,3 +159,27 @@ class MnemonicWords {
   @override
   String toString() => 'MnemonicWords(${words.length} words)';
 }
+
+/// The language a phrase was made in. An extension rather than a member of [MnemonicWords], so a
+/// class that implements it keeps compiling.
+extension MnemonicWordsLanguage on MnemonicWords {
+  /// The word list the phrase was generated in or checked against. The verify step draws its
+  /// decoys from it, so the right word is not the only one from the phrase's own list. English for
+  /// a class that implements [MnemonicWords], which has no language of its own: pass `language`
+  /// where a step asks for it.
+  Language get language {
+    // Only this package makes MnemonicWords (its constructor is private), so a runtime type of
+    // exactly MnemonicWords is one of ours; anything else implements it and has no _language.
+    final self = this;
+    return self.runtimeType == MnemonicWords
+        ? self._language
+        : Language.english;
+  }
+}
+
+/// Whether [a] and [b] are different phrases: other words, or the same words from another list.
+/// A new phrase starts a step over; nothing else does. The words are compared themselves, not
+/// through `==`, so a phrase class of the app's own made afresh on every build is not new. Not
+/// exported.
+bool isNewPhrase(MnemonicWords a, MnemonicWords b) =>
+    !listEquals(a.words, b.words) || a.language != b.language;
