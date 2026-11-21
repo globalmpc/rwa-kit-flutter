@@ -240,4 +240,38 @@ void main() {
       expect(find.byType(OutlinedButton), findsNWidgets(4));
     },
   );
+
+  testWidgets(
+    'an unusable challenge count is refused before the user is asked to authenticate',
+    (tester) async {
+      var asked = false;
+      Object? error;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                try {
+                  await showMnemonicBackupFlow(
+                    context,
+                    words: words,
+                    screenProtection: RecordingScreenProtection(),
+                    challengeCount: 13,
+                    authenticate: (_) async => asked = true,
+                  );
+                } catch (caught) {
+                  error = caught;
+                }
+              },
+              child: const Text('Back up'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Back up'));
+      await tester.pumpAndSettle();
+      expect(error, isArgumentError);
+      expect(asked, isFalse);
+    },
+  );
 }

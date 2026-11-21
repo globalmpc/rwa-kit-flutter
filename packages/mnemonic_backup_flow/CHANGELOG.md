@@ -6,6 +6,55 @@ All notable changes to `mnemonic_backup_flow` are recorded here. The format foll
 
 ## Unreleased
 
+## 0.3.1 - 2026-11-20
+
+The steps in any design system, and a full pub.dev score. Apps need no code change.
+
+### Added
+
+- `MnemonicBackupFlowBuilder`, `MnemonicRevealBuilder`, `MnemonicVerifyBuilder` and
+  `MnemonicImportBuilder`: the rules of the flow and of each screen without their look, for
+  wallets with their own design system. They need no Material ancestor or theme. Each hands its
+  builder a state (`MnemonicRevealState`, `MnemonicVerifyState`, `MnemonicImportState`) whose
+  secret parts, the words, the current challenge and the input, are null unless they may be
+  painted, so a page that draws only what it is given never shows them at the wrong time. Every
+  callback checks its condition again when it is called, so one kept from an earlier state does
+  nothing, and reaches the step through a weak reference, so one kept after the step is gone does
+  not keep the phrase in memory. The flow builder holds the
+  screen protection once for both steps, as `showMnemonicBackupFlow` does. An app can build the
+  states directly to test its own pages.
+- `MnemonicSecretPhase`: `preparing`, `protectionFailed`, `hidden` or `visible`.
+- `words.language`: the word list a phrase was generated in or checked against, kept with the
+  phrase, also when it is made in another isolate. An extension (`MnemonicWordsLanguage`) over a
+  private field, so a class that implements `MnemonicWords` keeps compiling; such a class counts
+  as English, so pass `language` where a step asks for it.
+- `strings.placeholder(phase)` and `strings.importError(error)`, as an extension
+  (`MnemonicBackupStringsForBuilders`) so a class that implements `MnemonicBackupStrings` keeps
+  compiling.
+- Documentation on every public member, and tests for the example app, which now also shows the
+  backup drawn in a look of its own.
+
+### Changed
+
+- The screens and `showMnemonicBackupFlow` are drawn on the builders, so the two cannot follow
+  different rules. Their constructors and behaviour are unchanged, except that the verify
+  screen's choices are disabled once every challenge has been answered (taps were ignored
+  before).
+- The Material import keeps a documented suppression of the Flutter 3.50 deprecation of
+  `package:flutter/material.dart`. Its replacement, `package:material_ui`, is a separate copy of
+  Material: a screen built on it inside an app built on `MaterialApp` would lose the app's theme.
+
+### Fixed
+
+- The verify step of `showMnemonicBackupFlow` draws its decoys from the phrase's own word list. They
+  always came from the English list, so for a phrase in another language the one word from the
+  phrase's own list gave the answer away. No code change is needed: `MnemonicWords` now remembers
+  its language, and a new `language` parameter overrides it. A phrase parsed from accented text now
+  holds the word list's own spelling (it looks the same), so for a phrase this package made or
+  parsed, a decoy can never be a word of the phrase in another Unicode form.
+- An unusable `challengeCount` for `showMnemonicBackupFlow` is reported before the user is asked
+  to authenticate, not after the user has confirmed the phrase.
+
 ## 0.3.0 - 2026-11-09
 
 Upgrading from 0.2.0: apps need no code change. The reveal step keeps the words covered until the
