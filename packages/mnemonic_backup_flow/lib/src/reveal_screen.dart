@@ -1,10 +1,7 @@
-import 'package:flutter/material.dart';
-
+import 'material_import.dart';
 import 'mnemonic_words.dart';
-import 'protected_screen.dart';
-import 'report.dart';
+import 'reveal_builder.dart';
 import 'screen_protection.dart';
-import 'sensitive_clipboard.dart';
 import 'strings.dart';
 
 /// Shows the phrase, numbered, once the screen protection is active and the user has asked to
@@ -12,8 +9,10 @@ import 'strings.dart';
 /// not carry it.
 ///
 /// Reaching this screen is the app's decision. [showMnemonicBackupFlow] only pushes it after the
-/// caller's authentication returned true; if you push it yourself, gate it the same way.
+/// caller's authentication returned true; if you push it yourself, gate it the same way. For a
+/// look of your own with the same rules, use [MnemonicRevealBuilder].
 class MnemonicRevealScreen extends StatefulWidget {
+  /// The reveal screen, in Material.
   const MnemonicRevealScreen({
     super.key,
     required this.words,
@@ -26,12 +25,16 @@ class MnemonicRevealScreen extends StatefulWidget {
     this.protectionTimeout = const Duration(seconds: 15),
   });
 
+  /// The phrase to show.
   final MnemonicWords words;
+
+  /// Switched on before the words are shown, and off when the screen goes away.
   final ScreenProtection screenProtection;
 
   /// Called when the user confirms the phrase is written down.
   final VoidCallback onConfirmed;
 
+  /// The texts of the screen.
   final MnemonicBackupStrings strings;
 
   /// Whether to offer a copy button. Off by default: a clipboard is readable by other apps.
@@ -52,132 +55,129 @@ class MnemonicRevealScreen extends StatefulWidget {
   State<MnemonicRevealScreen> createState() => _MnemonicRevealScreenState();
 }
 
-class _MnemonicRevealScreenState extends State<MnemonicRevealScreen>
-    with ProtectedScreenState<MnemonicRevealScreen> {
-  SensitiveClipboard? _clipboard;
-  bool _shown = false;
-
-  /// The words are painted only while the protection allows it and, unless the screen was asked
-  /// not to, the user has uncovered them since the app last left the foreground.
-  bool get _wordsOnScreen =>
-      secretVisible && (!widget.obscureUntilShown || _shown);
-
+// A State only so the widget's public type stays what earlier versions shipped; the rules live in
+// MnemonicRevealBuilder.
+class _MnemonicRevealScreenState extends State<MnemonicRevealScreen> {
   @override
-  ScreenProtection get screenProtection => widget.screenProtection;
+  Widget build(BuildContext context) => MnemonicRevealBuilder(
+    words: widget.words,
+    screenProtection: widget.screenProtection,
+    onConfirmed: widget.onConfirmed,
+    allowCopy: widget.allowCopy,
+    obscureUntilShown: widget.obscureUntilShown,
+    clipboardClearAfter: widget.clipboardClearAfter,
+    protectionTimeout: widget.protectionTimeout,
+    builder: (context, state) =>
+        materialRevealView(context, state, widget.strings),
+  );
+}
 
-  @override
-  Duration? get protectionTimeout => widget.protectionTimeout;
-
-  @override
-  void onLeftForeground() {
-    // Cleared on the lifecycle notification itself. Waiting for a background frame would leave
-    // the words showing if the app returned before that frame was built.
-    _shown = false;
-  }
-
-  @override
-  void dispose() {
-    _clipboard?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _copy() async {
-    final clipboard = _clipboard ??= SensitiveClipboard(
-      clearAfter: widget.clipboardClearAfter,
-    );
-    String notice;
-    try {
-      await clipboard.copy(widget.words.sentence);
-      notice = widget.strings.copiedFor(widget.clipboardClearAfter.inSeconds);
-    } catch (error, stack) {
-      reportBackupFlowError(error, stack, 'while copying the phrase');
-      notice = widget.strings.copyFailed;
-    }
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = widget.strings;
-    final theme = Theme.of(context);
-    final visible = _wordsOnScreen;
-    return Scaffold(
-      appBar: AppBar(title: Text(strings.revealTitle)),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(strings.revealWarning, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 16),
-              Expanded(child: _body(strings, theme, visible)),
-              if (widget.allowCopy)
-                TextButton.icon(
-                  onPressed: visible ? _copy : null,
-                  icon: const Icon(Icons.copy),
-                  label: Text(strings.copy),
-                ),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: visible ? widget.onConfirmed : null,
-                child: Text(strings.revealConfirm),
+/// The Material look of the reveal step, shared by [MnemonicRevealScreen] and
+/// [showMnemonicBackupFlow]. Not exported.
+Widget materialRevealView(
+  BuildContext context,
+  MnemonicRevealState state,
+  MnemonicBackupStrings strings,
+) {
+  final theme = Theme.of(context);
+  final onCopy = state.onCopy;
+  return Scaffold(
+    appBar: AppBar(title: Text(strings.revealTitle)),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(strings.revealWarning, style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 16),
+            Expanded(child: _body(state, strings, theme)),
+            if (state.allowCopy)
+              TextButton.icon(
+                onPressed: onCopy == null
+                    ? null
+                    : () => _copy(context, onCopy, state, strings),
+                icon: const Icon(Icons.copy),
+                label: Text(strings.copy),
               ),
-            ],
-          ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: state.onConfirmed,
+              child: Text(strings.revealConfirm),
+            ),
+          ],
         ),
+      ),
+    ),
+  );
+}
+
+Future<void> _copy(
+  BuildContext context,
+  Future<bool?> Function() copy,
+  MnemonicRevealState state,
+  MnemonicBackupStrings strings,
+) async {
+  final copied = await copy();
+  if (copied == null || !context.mounted) {
+    return;
+  }
+  final notice = copied
+      ? strings.copiedFor(state.clipboardClearAfter.inSeconds)
+      : strings.copyFailed;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
+}
+
+Widget _body(
+  MnemonicRevealState state,
+  MnemonicBackupStrings strings,
+  ThemeData theme,
+) {
+  final placeholder = strings.placeholder(state.phase);
+  if (placeholder != null) {
+    return Center(
+      child: Text(
+        placeholder,
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodyLarge,
       ),
     );
   }
-
-  Widget _body(MnemonicBackupStrings strings, ThemeData theme, bool visible) {
-    if (!secretVisible) {
-      return Center(
-        child: Text(
-          secretPlaceholder(strings),
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyLarge,
-        ),
-      );
-    }
-    if (!visible) {
-      // A scroll view, not a column that must fit: two of these screens can share a short
-      // route, and a column taller than that space is an overflow.
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        strings.revealCovered,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: () => setState(() => _shown = true),
-                        child: Text(strings.revealShow),
-                      ),
-                    ],
-                  ),
+  final words = state.words;
+  if (words == null) {
+    // A scroll view, not a column that must fit: two of these screens can share a short
+    // route, and a column taller than that space is an overflow.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      strings.revealCovered,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: state.onShow,
+                      child: Text(strings.revealShow),
+                    ),
+                  ],
                 ),
               ),
             ),
-          );
-        },
-      );
-    }
-    return _WordGrid(words: widget.words.words);
+          ),
+        );
+      },
+    );
   }
+  return _WordGrid(words: words);
 }
 
 class _WordGrid extends StatelessWidget {

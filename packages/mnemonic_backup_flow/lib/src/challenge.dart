@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 /// One question in the backup check: which word sits at [position]?
 @immutable
 class VerificationChallenge {
+  /// A challenge with its answer and the choices to offer. [generateChallenges] makes these.
   const VerificationChallenge({
     required this.position,
     required this.answer,
@@ -14,11 +15,15 @@ class VerificationChallenge {
   /// 1-based position of the word in the phrase, the number the user wrote next to it.
   final int position;
 
+  /// The word at [position]: the right choice.
   final String answer;
 
   /// Shuffled, and contains [answer] exactly once.
   final List<String> choices;
 
+  /// Whether [candidate] is the word at [position], ignoring spaces around it. Compared as
+  /// spelled: the words and [choices] use the word list's own spelling, so offer the choices
+  /// rather than a text field, where a keyboard may compose an accent in another Unicode form.
   bool accepts(String candidate) => candidate.trim() == answer;
 
   /// Never includes the answer, so a challenge can be logged.
@@ -33,6 +38,10 @@ class VerificationChallenge {
 /// Positions are chosen with [random], which defaults to [Random.secure], and returned in
 /// ascending order. Checkbox-style "I have written it down" confirmations prove nothing; a
 /// distinct-position check proves the words were written in order.
+///
+/// Pass [words] in [wordList]'s own spelling, as [MnemonicWords] holds them. Words are compared as
+/// spelled, so an accented word in another Unicode form is not recognised as a word of the phrase,
+/// and the list's own spelling of it could be drawn as a decoy that looks the same.
 List<VerificationChallenge> generateChallenges(
   List<String> words, {
   required List<String> wordList,

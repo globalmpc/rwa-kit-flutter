@@ -9,6 +9,7 @@
 /// (`FLAG_SECURE`); iOS cannot, and plugins there hide the content behind an overlay when a
 /// screenshot or a recording happens. Say so in your app's copy rather than promising more.
 abstract class ScreenProtection {
+  /// For a subclass that implements [protect] and [release] itself.
   const ScreenProtection();
 
   /// A deliberate opt-out. Screenshots and recordings of the phrase are then possible, which is

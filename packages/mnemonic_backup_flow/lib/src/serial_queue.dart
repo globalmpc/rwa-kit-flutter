@@ -6,6 +6,7 @@ import 'dart:async';
 class SerialQueue {
   Future<void> _tail = Future<void>.value();
 
+  /// Runs [operation] after every operation queued before it has finished.
   Future<void> run(Future<void> Function() operation) {
     final gate = Completer<void>();
     final previous = _tail;

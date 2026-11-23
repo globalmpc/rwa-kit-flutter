@@ -9,9 +9,12 @@ const clipboardCallTimeout = Duration(seconds: 10);
 /// How long a clipboard read may take: on iOS it waits for the user to answer the paste prompt.
 const clipboardReadTimeout = Duration(seconds: 60);
 
+/// Whether the clipboard holds text, bounded by [clipboardCallTimeout].
 Future<bool> clipboardHasText() =>
     Clipboard.hasStrings().timeout(clipboardCallTimeout);
 
+/// The clipboard's text, or null, bounded by [clipboardReadTimeout] for a user who answers a
+/// paste prompt slowly.
 Future<String?> readClipboardText() async => (await Clipboard.getData(
   Clipboard.kTextPlain,
 ).timeout(clipboardReadTimeout))?.text;
